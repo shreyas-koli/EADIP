@@ -1,19 +1,59 @@
- 
+"""
+EADIP — Application entry point.
+
+Bootstraps the FastAPI application, registers routers, and defines
+top-level health / info endpoints.
+"""
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
+from app.api.auth import router as auth_router
+from app.core.config import settings
+
+
+# ── Lifespan (startup / shutdown hooks) ──────────────────────────
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Execute logic on application startup and shutdown."""
+    # ── Startup ──────────────────────────────────────────────────
+    print("🚀  EADIP Backend Started Successfully")
+    yield
+    # ── Shutdown (add cleanup logic here if needed) ──────────────
+
+
+# ── Application factory ─────────────────────────────────────────
+
 app = FastAPI(
-    title="Enterprise Autonomous Data Intelligence Platform",
-    version="1.0.0"
+    title=settings.APP_NAME,
+    description=settings.PROJECT_DESCRIPTION,
+    version=settings.APP_VERSION,
+    lifespan=lifespan,
 )
 
-@app.get("/")
+
+# ── Routers ──────────────────────────────────────────────────────
+
+app.include_router(auth_router)
+
+
+# ── Root endpoints ───────────────────────────────────────────────
+
+
+@app.get("/", tags=["General"])
 def root():
+    """Welcome endpoint — confirms the API is reachable."""
     return {
-        "message": "Welcome to EADIP 🚀"
+        "message": "Welcome to EADIP 🚀",
     }
 
-@app.get("/health")
+
+@app.get("/health", tags=["General"])
 def health():
+    """Lightweight health check for load-balancers and probes."""
     return {
-        "status": "healthy"
+        "status": "healthy",
     }
