@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
+from app.api.warehouse import router as warehouse_router
 from app.core.config import settings
 
 
@@ -38,6 +39,7 @@ app = FastAPI(
 # ── Routers ──────────────────────────────────────────────────────
 
 app.include_router(auth_router)
+app.include_router(warehouse_router)
 
 
 # ── Root endpoints ───────────────────────────────────────────────
