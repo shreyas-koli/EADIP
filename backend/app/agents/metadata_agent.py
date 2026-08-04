@@ -4,7 +4,7 @@ Metadata discovery agent.
 Orchestrates schema introspection for a registered data warehouse.
 This agent is a thin coordination layer — it delegates the actual
 inspection work to :class:`MetadataInspector` and returns the raw
-metadata dictionary for downstream consumers (supervisor, API, etc.).
+metadata dictionary for downstream consumers (orchestrator, API, etc.).
 
 No LLM calls, no database writes, no HTTP concerns.
 """
@@ -13,6 +13,17 @@ from typing import Any
 
 from app.models.warehouse import Warehouse
 from app.warehouse.inspector import MetadataInspector
+from app.context.shared_context import SharedContext
+
+
+import threading
+import time
+
+print(f"[{threading.current_thread().name}] Metadata START : {time.perf_counter()}")
+
+time.sleep(3)
+
+print(f"[{threading.current_thread().name}] Metadata END   : {time.perf_counter()}")
 
 
 class MetadataAgent:
@@ -33,6 +44,18 @@ class MetadataAgent:
     # ── Discovery ────────────────────────────────────────────────
 
     def discover_metadata(self, warehouse: Warehouse) -> dict[str, Any]:
+        import threading
+        import time
+
+        print(
+            f"[{threading.current_thread().name}] Metadata START {time.perf_counter()}"
+        )
+
+        time.sleep(3)
+
+        print(
+            f"[{threading.current_thread().name}] Metadata END {time.perf_counter()}"
+        )
         """
         Inspect the warehouse and return its full metadata snapshot.
 
@@ -69,4 +92,6 @@ class MetadataAgent:
                     }
                 }
         """
-        return self._inspector.inspect_database(warehouse)
+        result = self._inspector.inspect_database(warehouse)
+        SharedContext().set_agent_result("metadata", result)
+        return result

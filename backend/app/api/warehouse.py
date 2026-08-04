@@ -2,14 +2,16 @@
 Warehouse management API router.
 
 Thin HTTP layer that delegates all business logic to the warehouse
-service, connector, and supervisor agent.  Responsible only for
+service, connector, and orchestrator.  Responsible only for
 request / response mapping, status codes, and error translation.
 """
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.agents.supervisor import SupervisorAgent
 from app.database.session import DBSession
+from app.orchestrator.agent_orchestrator import AgentOrchestrator
+from app.orchestrator.task_factory import TaskFactory
+from app.context.shared_context import SharedContext
 from app.schemas.warehouse import WarehouseCreate, WarehouseResponse, WarehouseUpdate
 from app.warehouse.connector import WarehouseConnector
 from app.warehouse.service import (
@@ -191,8 +193,8 @@ def discover_metadata(warehouse_id: int, db: DBSession):
     """
     Trigger metadata discovery for the specified warehouse.
 
-    Delegates to the ``SupervisorAgent`` which checks the shared
-    context cache before performing a full introspection.
+    Delegates to the ``AgentOrchestrator`` which orchestrates
+    agent tasks in parallel based on their dependency graph.
 
     Returns **404** if the warehouse does not exist.
     """
@@ -204,11 +206,31 @@ def discover_metadata(warehouse_id: int, db: DBSession):
             detail=f"Warehouse with id {warehouse_id} not found.",
         )
 
-    supervisor = SupervisorAgent()
-    metadata = supervisor.discover_metadata(warehouse)
+    # ── Orchestration setup ────────────────────────────────────
+    context = SharedContext()
+    context.set_current_warehouse({
+        "id": warehouse.id,
+        "name": warehouse.name,
+        "db_type": warehouse.db_type,
+        "host": warehouse.host,
+        "port": warehouse.port,
+        "database_name": warehouse.database_name,
+    })
+
+    # ── Build execution plan and run ───────────────────────────
+    factory = TaskFactory()
+    tasks = factory.build_metadata_discovery(warehouse)
+
+    orchestrator = AgentOrchestrator()
+    summary = orchestrator.execute_parallel(tasks)
+
+    # ── Read results from Shared Memory Bus ────────────────────
+    metadata = context.get_agent_result("metadata")
+    statistics = context.get_agent_result("statistics")
 
     return {
-        "warehouse_id": warehouse.id,
-        "warehouse_name": warehouse.name,
         "metadata": metadata,
+        "statistics": statistics,
+        "execution": summary,
     }
+

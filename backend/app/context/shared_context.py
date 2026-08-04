@@ -1,10 +1,14 @@
 """
-Shared in-memory context store for the multi-agent system.
+Enterprise shared memory bus.
 
-Provides a thread-safe, singleton container that every agent and
-service can read from / write to during a session.  The store holds
-the current warehouse reference, discovered metadata, query history,
-and execution logs.
+Provides a **thread-safe, singleton** context store designed for
+concurrent access by multiple agents running inside a
+``ThreadPoolExecutor``.  Every public method acquires an ``RLock``
+so nested / re-entrant calls from the same thread are safe.
+
+Agent results are stored in a **generic registry** — any current or
+future agent can write its output via ``set_agent_result()`` without
+requiring modifications to this class.
 
 .. note::
 
@@ -15,22 +19,65 @@ and execution logs.
 
 from __future__ import annotations
 
+import copy
 import threading
+import uuid
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
+
+
+# ── Agent status enumeration ─────────────────────────────────────
+
+
+class AgentStatus(str, Enum):
+    """Possible lifecycle states of an agent."""
+
+    WAITING = "WAITING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+# ── Shared context store ─────────────────────────────────────────
 
 
 class SharedContext:
     """
-    Singleton context store shared across agents, services, and
-    API layers.
+    Thread-safe singleton shared memory bus for the multi-agent
+    platform.
+
+    Future Session Isolation:
+    -------------------------
+    The current implementation is process-wide and designed for
+    development or single-tenant execution. For production, the
+    platform should migrate to session-scoped storage (e.g., Redis
+    or database-backed context) to isolate concurrent multi-user
+    orchestrations. To migrate, replace the `_instance` singleton
+    with a session-aware factory `get_context(session_id: str)`
+    while preserving this public API.
+
+    All mutable state is guarded by an ``RLock`` so the store is
+    safe for use with ``ThreadPoolExecutor`` and other concurrency
+    primitives.
+
+    Agent results are stored in a **generic registry** keyed by
+    agent name, so new agents (Lineage, Data Quality, Compliance,
+    Cost, Forecast, Recommendation, Query, Explainability, …) can
+    store and retrieve results without any code changes here.
 
     Usage::
 
-        ctx = SharedContext()          # always returns the same instance
-        ctx.set_metadata(metadata)
-        ctx.add_query("SELECT * FROM users")
-        ctx.add_log("Metadata discovery completed.")
+        ctx = SharedContext()
+
+        # Store agent outputs
+        ctx.set_agent_result("metadata", metadata_result)
+        ctx.set_agent_result("statistics", statistics_result)
+        ctx.set_agent_result("security", security_result)
+
+        # Retrieve later
+        metadata   = ctx.get_agent_result("metadata")
+        statistics = ctx.get_agent_result("statistics")
     """
 
     _instance: SharedContext | None = None
@@ -50,13 +97,31 @@ class SharedContext:
 
     def _initialise(self) -> None:
         """Set up default internal state (called once)."""
-        self._current_warehouse: dict[str, Any] | None = None
-        self._metadata: dict[str, Any] | None = None
-        self._recommendations: list[str] = []
-        self._queries: list[dict[str, Any]] = []
-        self._logs: list[dict[str, Any]] = []
+        self._rlock = threading.RLock()
 
-    # ── Warehouse ────────────────────────────────────────────────
+        self._session_id: str = str(uuid.uuid4())
+        self._current_warehouse: dict[str, Any] | None = None
+        self._agent_results: dict[str, Any] = {}
+        self._execution_logs: list[dict[str, Any]] = []
+        self._execution_history: list[dict[str, Any]] = []
+        self._agent_status: dict[str, AgentStatus] = {}
+
+    # ── Session ID ───────────────────────────────────────────────
+
+    def get_session_id(self) -> str:
+        """
+        Return the unique session identifier.
+
+        Returns
+        ───────
+        str
+            A UUID-4 string generated when the context was created
+            (or last cleared).
+        """
+        with self._rlock:
+            return self._session_id
+
+    # ── Current warehouse ────────────────────────────────────────
 
     def set_current_warehouse(self, warehouse: dict[str, Any]) -> None:
         """
@@ -67,7 +132,8 @@ class SharedContext:
         warehouse : dict[str, Any]
             Serialised warehouse data (id, name, db_type, etc.).
         """
-        self._current_warehouse = warehouse
+        with self._rlock:
+            self._current_warehouse = warehouse
 
     def get_current_warehouse(self) -> dict[str, Any] | None:
         """
@@ -77,119 +143,270 @@ class SharedContext:
         ───────
         dict[str, Any] | None
         """
-        return self._current_warehouse
+        with self._rlock:
+            return copy.deepcopy(self._current_warehouse) if self._current_warehouse else None
 
-    # ── Metadata ─────────────────────────────────────────────────
+    # ── Agent result registry ────────────────────────────────────
 
-    def set_metadata(self, metadata: dict[str, Any]) -> None:
+    def set_agent_result(self, agent_name: str, result: Any) -> None:
         """
-        Store the discovered metadata snapshot.
+        Store (or overwrite) the output of an agent.
 
         Parameters
         ──────────
-        metadata : dict[str, Any]
-            Nested schema → tables → columns dictionary as returned
-            by ``MetadataAgent.discover_metadata()``.
-        """
-        self._metadata = metadata
+        agent_name : str
+            A unique key identifying the agent (e.g. ``"metadata"``,
+            ``"statistics"``, ``"security"``, ``"lineage"``).
+        result : Any
+            The agent's output — can be any serialisable object
+            (dict, list, primitive, etc.).
 
-    def get_metadata(self) -> dict[str, Any] | None:
-        """
-        Return the stored metadata snapshot, or ``None`` if no
-        discovery has run yet.
+        Example::
 
-        Returns
-        ───────
-        dict[str, Any] | None
+            ctx.set_agent_result("metadata", metadata_dict)
+            ctx.set_agent_result("statistics", stats_dict)
         """
-        return self._metadata
+        with self._rlock:
+            self._agent_results[agent_name] = result
 
-    # ── Recommendations ──────────────────────────────────────────
-
-    def set_recommendations(self, recommendations: list[str]) -> None:
+    def get_agent_result(self, agent_name: str) -> Any | None:
         """
-        Replace the current recommendation list.
+        Retrieve the stored result for a specific agent.
+
+        Returns a **deep copy** to prevent external mutation of
+        the shared state.
 
         Parameters
         ──────────
-        recommendations : list[str]
-        """
-        self._recommendations = list(recommendations)
-
-    def get_recommendations(self) -> list[str]:
-        """
-        Return the current recommendations.
+        agent_name : str
+            The key used when the result was stored.
 
         Returns
         ───────
-        list[str]
+        Any | None
+            The agent's output, or ``None`` if no result has been
+            stored under that key.
         """
-        return list(self._recommendations)
+        with self._rlock:
+            value = self._agent_results.get(agent_name)
+            if value is None:
+                return None
+            return copy.deepcopy(value)
 
-    # ── Query history ────────────────────────────────────────────
-
-    def add_query(self, query: str) -> None:
+    def has_agent_result(self, agent_name: str) -> bool:
         """
-        Append a query to the history with a UTC timestamp.
+        Check whether a result exists for the given agent.
 
         Parameters
         ──────────
-        query : str
-            The SQL query string that was executed.
-        """
-        self._queries.append({
-            "query": query,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-
-    def get_queries(self) -> list[dict[str, Any]]:
-        """
-        Return the full query history.
+        agent_name : str
+            The key to look up.
 
         Returns
         ───────
-        list[dict[str, Any]]
-            Each entry contains ``query`` and ``timestamp``.
+        bool
+            ``True`` if a result is stored, ``False`` otherwise.
         """
-        return list(self._queries)
+        with self._rlock:
+            return agent_name in self._agent_results
+
+    def remove_agent_result(self, agent_name: str) -> None:
+        """
+        Remove the stored result for a specific agent.
+
+        No-op if the key does not exist.
+
+        Parameters
+        ──────────
+        agent_name : str
+            The key to remove.
+        """
+        with self._rlock:
+            self._agent_results.pop(agent_name, None)
+
+    def clear_agent_results(self) -> None:
+        """
+        Remove **all** stored agent results.
+
+        Other state (warehouse, logs, history, agent status, session)
+        is preserved.
+        """
+        with self._rlock:
+            self._agent_results.clear()
+
+    def get_all_agent_results(self) -> dict[str, Any]:
+        """
+        Return a deep copy of the entire agent result registry.
+
+        Returns
+        ───────
+        dict[str, Any]
+            Mapping of agent name → result for every stored entry.
+        """
+        with self._rlock:
+            return copy.deepcopy(self._agent_results)
 
     # ── Execution logs ───────────────────────────────────────────
 
-    def add_log(self, message: str) -> None:
+    def add_execution_log(self, message: str) -> None:
         """
-        Append an execution log entry with a UTC timestamp.
+        Append a timestamped execution log entry.
 
         Parameters
         ──────────
         message : str
             A human-readable log message.
         """
-        self._logs.append({
-            "message": message,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        with self._rlock:
+            self._execution_logs.append({
+                "message": message,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
 
-    def get_logs(self) -> list[dict[str, Any]]:
+    def get_execution_logs(self) -> list[dict[str, Any]]:
         """
-        Return the full execution log.
+        Return a copy of all execution log entries.
 
         Returns
         ───────
         list[dict[str, Any]]
             Each entry contains ``message`` and ``timestamp``.
         """
-        return list(self._logs)
+        with self._rlock:
+            return copy.deepcopy(self._execution_logs)
+
+    # ── Execution history ────────────────────────────────────────
+
+    def add_execution_history(
+        self,
+        agent: str,
+        started_at: str | None = None,
+        finished_at: str | None = None,
+        duration_ms: int | None = None,
+        status: AgentStatus | None = None,
+        thread: str | None = None,
+        wave: int | None = None,
+        # Legacy kwargs for backward compatibility
+        start_time: str | None = None,
+        end_time: str | None = None,
+        duration: float | None = None,
+    ) -> None:
+        """
+        Record a completed agent execution.
+
+        Parameters
+        ──────────
+        agent      : str
+            Name of the agent (e.g. ``"metadata_agent"``).
+        started_at : str | None
+            ISO-8601 UTC timestamp when the agent started.
+        finished_at: str | None
+            ISO-8601 UTC timestamp when the agent finished.
+        duration_ms: int | None
+            Execution duration in milliseconds.
+        status     : AgentStatus | None
+            Final outcome (``COMPLETED`` or ``FAILED``).
+        thread     : str | None
+            Name of the executing thread.
+        wave       : int | None
+            The execution wave ID.
+        """
+        # Resolve values (supporting legacy fields if new ones are omitted)
+        final_started = started_at or start_time or ""
+        final_finished = finished_at or end_time or ""
+        if duration_ms is not None:
+            final_duration = int(duration_ms)
+        elif duration is not None:
+            final_duration = int(duration * 1000)
+        else:
+            final_duration = 0
+
+        with self._rlock:
+            self._execution_history.append({
+                "agent": agent,
+                "started_at": final_started,
+                "finished_at": final_finished,
+                "duration_ms": final_duration,
+                "status": status.value if status else "UNKNOWN",
+                "thread": thread or "unknown",
+                "wave": wave if wave is not None else 0,
+            })
+
+    def get_execution_history(self) -> list[dict[str, Any]]:
+        """
+        Return a copy of all execution history entries.
+
+        Returns
+        ───────
+        list[dict[str, Any]]
+        """
+        with self._rlock:
+            return copy.deepcopy(self._execution_history)
+
+    # ── Agent status ─────────────────────────────────────────────
+
+    def set_agent_status(self, agent: str, status: AgentStatus) -> None:
+        """
+        Update the lifecycle status of a specific agent.
+
+        Parameters
+        ──────────
+        agent  : str
+            Agent identifier (e.g. ``"metadata_agent"``).
+        status : AgentStatus
+            The new status (``WAITING``, ``RUNNING``, ``COMPLETED``,
+            ``FAILED``).
+        """
+        with self._rlock:
+            self._agent_status[agent] = status
+
+    def get_agent_status(self, agent: str) -> AgentStatus | None:
+        """
+        Return the current status of a specific agent.
+
+        Parameters
+        ──────────
+        agent : str
+            Agent identifier.
+
+        Returns
+        ───────
+        AgentStatus | None
+            The current status, or ``None`` if the agent has not
+            been registered yet.
+        """
+        with self._rlock:
+            return self._agent_status.get(agent)
+
+    def get_all_agent_statuses(self) -> dict[str, str]:
+        """
+        Return a snapshot of every agent's current status.
+
+        Returns
+        ───────
+        dict[str, str]
+            Mapping of agent name → status value string.
+        """
+        with self._rlock:
+            return {
+                agent: status.value
+                for agent, status in self._agent_status.items()
+            }
 
     # ── Reset ────────────────────────────────────────────────────
 
     def clear(self) -> None:
         """
-        Reset all stored state to defaults.
+        Reset all stored state to defaults and generate a new
+        session id.
 
-        Useful between sessions or during testing.
+        Useful between sessions, warehouse switches, or during
+        testing.
         """
-        self._current_warehouse = None
-        self._metadata = None
-        self._recommendations = []
-        self._queries = []
-        self._logs = []
+        with self._rlock:
+            self._session_id = str(uuid.uuid4())
+            self._current_warehouse = None
+            self._agent_results.clear()
+            self._execution_logs.clear()
+            self._execution_history.clear()
+            self._agent_status.clear()
