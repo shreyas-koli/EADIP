@@ -222,15 +222,19 @@ def discover_metadata(warehouse_id: int, db: DBSession):
     tasks = factory.build_metadata_discovery(warehouse)
 
     orchestrator = AgentOrchestrator()
-    summary = orchestrator.execute_parallel(tasks)
+    try:
+        summary = orchestrator.execute_parallel(tasks)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
 
     # ── Read results from Shared Memory Bus ────────────────────
-    metadata = context.get_agent_result("metadata")
-    statistics = context.get_agent_result("statistics")
+    agent_results = context.get_all_agent_results()
 
     return {
-        "metadata": metadata,
-        "statistics": statistics,
+        **agent_results,
         "execution": summary,
     }
 

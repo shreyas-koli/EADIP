@@ -109,21 +109,27 @@ class MetadataInspector:
         Returns
         ───────
         list[dict[str, Any]]
-            Each dict contains keys such as ``name``, ``type``,
-            ``nullable``, ``default``, and ``primary_key`` as
-            returned by SQLAlchemy's ``Inspector.get_columns()``.
+            Each dict contains keys ``name``, ``type``, ``nullable``,
+            ``default``, and ``primary_key``.  ``primary_key`` is
+            derived from ``Inspector.get_pk_constraint()`` — not from
+            the per-column dict — to ensure dialect-independent
+            accuracy.
         """
         insp, engine = self._get_inspector(warehouse)
         try:
-            columns = insp.get_columns(table, schema=schema)
+            pk_constraint = insp.get_pk_constraint(table, schema=schema)
+            pk_columns: set[str] = set(
+                pk_constraint.get("constrained_columns", [])
+            )
             return [
                 {
-                    "name": col["name"],
-                    "type": str(col["type"]),
-                    "nullable": col.get("nullable", True),
-                    "default": col.get("default"),
+                    "name":        col["name"],
+                    "type":        str(col["type"]),
+                    "nullable":    col.get("nullable", True),
+                    "default":     col.get("default"),
+                    "primary_key": col["name"] in pk_columns,
                 }
-                for col in columns
+                for col in insp.get_columns(table, schema=schema)
             ]
         finally:
             engine.dispose()
@@ -154,7 +160,13 @@ class MetadataInspector:
                             "tables": {
                                 "employees": {
                                     "columns": [
-                                        {"name": "id", "type": "INTEGER", ...},
+                                        {
+                                            "name":        "id",
+                                            "type":        "INTEGER",
+                                            "nullable":    False,
+                                            "default":     None,
+                                            "primary_key": True,
+                                        },
                                         ...
                                     ]
                                 }
@@ -162,6 +174,10 @@ class MetadataInspector:
                         }
                     }
                 }
+
+            ``primary_key`` is derived from
+            ``Inspector.get_pk_constraint()`` per table, ensuring
+            dialect-independent accuracy.
         """
         insp, engine = self._get_inspector(warehouse)
         try:
@@ -171,12 +187,19 @@ class MetadataInspector:
                 tables: dict[str, Any] = {}
 
                 for table_name in insp.get_table_names(schema=schema_name):
+                    pk_constraint = insp.get_pk_constraint(
+                        table_name, schema=schema_name
+                    )
+                    pk_columns: set[str] = set(
+                        pk_constraint.get("constrained_columns", [])
+                    )
                     columns = [
                         {
-                            "name": col["name"],
-                            "type": str(col["type"]),
-                            "nullable": col.get("nullable", True),
-                            "default": col.get("default"),
+                            "name":        col["name"],
+                            "type":        str(col["type"]),
+                            "nullable":    col.get("nullable", True),
+                            "default":     col.get("default"),
+                            "primary_key": col["name"] in pk_columns,
                         }
                         for col in insp.get_columns(table_name, schema=schema_name)
                     ]

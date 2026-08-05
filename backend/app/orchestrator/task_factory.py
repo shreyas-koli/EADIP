@@ -18,8 +18,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.metadata_agent import MetadataAgent
+from app.agents.security_agent import SecurityAgent
 from app.agents.statistics_agent import StatisticsAgent
-from app.context.shared_context import SharedContext
 from app.models.warehouse import Warehouse
 from app.orchestrator.agent_orchestrator import AgentTask
 
@@ -45,10 +45,10 @@ class TaskFactory:
     """
 
     def __init__(self) -> None:
-        """Initialise reusable agent instances and shared context."""
-        self._metadata_agent = MetadataAgent()
+        """Initialise reusable agent instances."""
+        self._metadata_agent   = MetadataAgent()
         self._statistics_agent = StatisticsAgent()
-        # self._context = SharedContext()
+        self._security_agent   = SecurityAgent()
 
     # ── Metadata discovery plan ──────────────────────────────────
 
@@ -59,13 +59,21 @@ class TaskFactory:
         """
         Build an execution plan for warehouse metadata discovery.
 
-        Creates independent ``AgentTask`` objects for:
+        Constructs ``AgentTask`` descriptors for three agents and
+        declares their dependency relationships so the orchestrator
+        can schedule them in the correct order:
 
-        1. Metadata discovery
-        2. Statistics generation
+        * **Wave 1** — independent tasks run in parallel:
 
-        Both tasks have no dependencies and will be scheduled in the
-        same execution wave.
+          1. ``metadata``   — structural schema discovery
+          2. ``statistics`` — volumetric table/index analysis
+
+        * **Wave 2** — dependent on Wave 1 completing:
+
+          3. ``security`` — rule-based static security analysis;
+             requires ``metadata`` to be present in
+             :class:`~app.context.shared_context.SharedContext`
+             before it can run.
 
         Parameters
         ──────────
@@ -75,32 +83,37 @@ class TaskFactory:
         Returns
         ───────
         list[AgentTask]
-            A list containing the metadata and statistics tasks.
-            Ready for ``AgentOrchestrator.execute_parallel()``.
+            Three tasks — metadata, statistics, and security —
+            ready for ``AgentOrchestrator.execute_parallel()``.
         """
         metadata_task = AgentTask(
             name="metadata",
             callable=self._metadata_agent.discover_metadata,
             args=(warehouse,),
-            # dependencies=["metadata"],
         )
 
         statistics_task = AgentTask(
             name="statistics",
             callable=self._statistics_agent.generate_statistics,
             args=(warehouse,),
-            # dependencies=["statistics"],
+        )
+
+        security_task = AgentTask(
+            name="security",
+            callable=self._security_agent.generate_security_report,
+            args=(warehouse,),
+            dependencies=["metadata"],
         )
 
         return [
             metadata_task,
             statistics_task,
+            security_task,
         ]
 
     # ── Future plan builders (stubs) ─────────────────────────────
     #
     # def build_analysis_tasks(self, warehouse) -> list[AgentTask]: ...
     # def build_query_tasks(self, warehouse, query) -> list[AgentTask]: ...
-    # def build_security_tasks(self, warehouse) -> list[AgentTask]: ...
     # def build_prediction_tasks(self, warehouse) -> list[AgentTask]: ...
     # def build_explainability_tasks(self, warehouse) -> list[AgentTask]: ...

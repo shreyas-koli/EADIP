@@ -1,8 +1,23 @@
-# ── Core ─────────────────────────────────────────────────────────
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
+fastapi
+uvicorn[standard]
 
-# ── Configuration ────────────────────────────────────────────────
-pydantic>=2.9.0
-pydantic-settings>=2.5.0
-python-dotenv>=1.0.0
+sqlalchemy
+psycopg2-binary
+
+pydantic
+pydantic-settings
+
+python-dotenv
+
+passlib[bcrypt]
+bcrypt
+
+python-jose[cryptography]
+
+python-multipart
+
+email-validator
+
+typing-extensions
+
+greenlet
