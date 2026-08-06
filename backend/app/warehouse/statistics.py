@@ -52,7 +52,7 @@ class StatisticsAnalyzer:
 
     # ── Public API ───────────────────────────────────────────────
 
-    def analyse(self, warehouse: Warehouse) -> dict[str, Any]:
+    def analyse(self, warehouse: Warehouse, include_system_schemas: bool = False) -> dict[str, Any]:
         """
         Collect and return structural statistics for a warehouse.
 
@@ -60,6 +60,8 @@ class StatisticsAnalyzer:
         ──────────
         warehouse : Warehouse
             A registered ``Warehouse`` ORM instance.
+        include_system_schemas : bool
+            If True, includes statistics for system schemas. Defaults to False.
 
         Returns
         ───────
@@ -76,10 +78,10 @@ class StatisticsAnalyzer:
         engine = self._connect(warehouse)
 
         try:
-            db_summary = self._get_database_summary(engine)
-            table_stats = self._get_table_statistics(engine)
-            index_stats = self._get_index_statistics(engine)
-            constraint_stats = self._get_constraint_statistics(engine)
+            db_summary = self._get_database_summary(engine, include_system_schemas)
+            table_stats = self._get_table_statistics(engine, include_system_schemas)
+            index_stats = self._get_index_statistics(engine, include_system_schemas)
+            constraint_stats = self._get_constraint_statistics(engine, include_system_schemas)
             summary = self._calculate_summary(
                 db_summary, table_stats, index_stats, constraint_stats,
             )
@@ -111,9 +113,20 @@ class StatisticsAnalyzer:
         """
         return self._connector.connect(warehouse)
 
+    # ── SQL helper ───────────────────────────────────────────────
+
+    @staticmethod
+    def _get_schema_filter(column_name: str, include_system_schemas: bool) -> str:
+        """Helper to generate SQL schema exclusion clauses."""
+        if include_system_schemas:
+            return ""
+        return f"AND {column_name} NOT IN ('pg_catalog', 'information_schema', 'pg_toast') " \
+               f"AND {column_name} NOT LIKE 'pg_temp%' " \
+               f"AND {column_name} NOT LIKE 'pg_toast_temp%'"
+
     # ── Database-level summary ───────────────────────────────────
 
-    def _get_database_summary(self, engine: Engine) -> dict[str, int]:
+    def _get_database_summary(self, engine: Engine, include_system_schemas: bool) -> dict[str, int]:
         """
         Collect high-level counts: schemas, tables, views, columns.
 
@@ -128,36 +141,27 @@ class StatisticsAnalyzer:
             Aggregated counts keyed by metric name.
         """
         queries: dict[str, str] = {
-            "total_schemas": """
+            "total_schemas": f"""
                 SELECT COUNT(DISTINCT schema_name)
                 FROM information_schema.schemata
-                WHERE schema_name NOT IN (
-                    'pg_catalog', 'information_schema',
-                    'pg_toast', 'pg_temp_1', 'pg_toast_temp_1'
-                );
+                WHERE 1=1 {self._get_schema_filter('schema_name', include_system_schemas)};
             """,
-            "total_tables": """
+            "total_tables": f"""
                 SELECT COUNT(*)
                 FROM information_schema.tables
-                WHERE table_schema NOT IN (
-                    'pg_catalog', 'information_schema'
-                )
-                AND table_type = 'BASE TABLE';
+                WHERE table_type = 'BASE TABLE'
+                {self._get_schema_filter('table_schema', include_system_schemas)};
             """,
-            "total_views": """
+            "total_views": f"""
                 SELECT COUNT(*)
                 FROM information_schema.tables
-                WHERE table_schema NOT IN (
-                    'pg_catalog', 'information_schema'
-                )
-                AND table_type = 'VIEW';
+                WHERE table_type = 'VIEW'
+                {self._get_schema_filter('table_schema', include_system_schemas)};
             """,
-            "total_columns": """
+            "total_columns": f"""
                 SELECT COUNT(*)
                 FROM information_schema.columns
-                WHERE table_schema NOT IN (
-                    'pg_catalog', 'information_schema'
-                );
+                WHERE 1=1 {self._get_schema_filter('table_schema', include_system_schemas)};
             """,
         }
 
@@ -172,7 +176,7 @@ class StatisticsAnalyzer:
 
     # ── Table-level statistics ───────────────────────────────────
 
-    def _get_table_statistics(self, engine: Engine) -> list[dict[str, Any]]:
+    def _get_table_statistics(self, engine: Engine, include_system_schemas: bool) -> list[dict[str, Any]]:
         """
         Collect per-table statistics: schema, name, estimated row
         count, and column count.
@@ -190,7 +194,7 @@ class StatisticsAnalyzer:
         list[dict[str, Any]]
             One entry per table, sorted by estimated rows descending.
         """
-        sql = """
+        sql = f"""
             SELECT
                 t.table_schema                            AS schema_name,
                 t.table_name                              AS table_name,
@@ -205,10 +209,8 @@ class StatisticsAnalyzer:
             LEFT JOIN information_schema.columns AS col
                 ON col.table_schema = t.table_schema
                 AND col.table_name = t.table_name
-            WHERE t.table_schema NOT IN (
-                'pg_catalog', 'information_schema'
-            )
-            AND t.table_type = 'BASE TABLE'
+            WHERE t.table_type = 'BASE TABLE'
+            {self._get_schema_filter('t.table_schema', include_system_schemas)}
             GROUP BY
                 t.table_schema,
                 t.table_name,
@@ -234,7 +236,7 @@ class StatisticsAnalyzer:
 
     # ── Index statistics ─────────────────────────────────────────
 
-    def _get_index_statistics(self, engine: Engine) -> list[dict[str, Any]]:
+    def _get_index_statistics(self, engine: Engine, include_system_schemas: bool) -> list[dict[str, Any]]:
         """
         Collect per-schema index details.
 
@@ -249,16 +251,14 @@ class StatisticsAnalyzer:
             Each entry contains ``schema``, ``table_name``,
             ``index_name``, and ``index_definition``.
         """
-        sql = """
+        sql = f"""
             SELECT
                 schemaname   AS schema_name,
                 tablename    AS table_name,
                 indexname    AS index_name,
                 indexdef     AS index_definition
             FROM pg_indexes
-            WHERE schemaname NOT IN (
-                'pg_catalog', 'information_schema'
-            )
+            WHERE 1=1 {self._get_schema_filter('schemaname', include_system_schemas)}
             ORDER BY
                 schemaname,
                 tablename,
@@ -285,6 +285,7 @@ class StatisticsAnalyzer:
     def _get_constraint_statistics(
         self,
         engine: Engine,
+        include_system_schemas: bool,
     ) -> list[dict[str, Any]]:
         """
         Collect per-schema constraint details.
@@ -300,16 +301,14 @@ class StatisticsAnalyzer:
             Each entry contains ``schema``, ``table_name``,
             ``constraint_name``, and ``constraint_type``.
         """
-        sql = """
+        sql = f"""
             SELECT
                 constraint_schema   AS schema_name,
                 table_name          AS table_name,
                 constraint_name     AS constraint_name,
                 constraint_type     AS constraint_type
             FROM information_schema.table_constraints
-            WHERE constraint_schema NOT IN (
-                'pg_catalog', 'information_schema'
-            )
+            WHERE 1=1 {self._get_schema_filter('constraint_schema', include_system_schemas)}
             ORDER BY
                 constraint_schema,
                 table_name,

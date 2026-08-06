@@ -88,6 +88,16 @@ _WEAK_COLUMN_NAMES: frozenset[str] = frozenset({
     "value", "data", "temp", "abc",
 })
 
+# ── System schemas (excluded by default) ─────────────────────────
+
+_SYSTEM_SCHEMAS: frozenset[str] = frozenset({
+    "information_schema", "pg_catalog", "pg_toast"
+})
+
+def _is_system_schema(schema_name: str) -> bool:
+    """Check if a schema is a known PostgreSQL system schema."""
+    return schema_name in _SYSTEM_SCHEMAS or schema_name.startswith("pg_temp")
+
 
 # ── Analyser ─────────────────────────────────────────────────────
 
@@ -117,7 +127,7 @@ class SecurityAnalyzer:
 
     # ── Public API ───────────────────────────────────────────────
 
-    def analyse(self, warehouse: Warehouse) -> dict[str, Any]:
+    def analyse(self, warehouse: Warehouse, include_system_schemas: bool = False) -> dict[str, Any]:
         """
         Run all security rules against the warehouse metadata and
         return a structured security report.
@@ -128,6 +138,9 @@ class SecurityAnalyzer:
             A registered, active ``Warehouse`` ORM instance.  Used
             only for identity information (``id``, ``name``) embedded
             in the report — no live connection is made.
+        include_system_schemas : bool
+            If True, overrides default behavior and includes system
+            schemas in the security analysis. Defaults to False.
 
         Returns
         ───────
@@ -164,6 +177,9 @@ class SecurityAnalyzer:
         if metadata:
             schemas: dict[str, Any] = metadata.get("schemas", {})
             for schema_name, schema_body in schemas.items():
+                if not include_system_schemas and _is_system_schema(schema_name):
+                    continue
+
                 tables: dict[str, Any] = schema_body.get("tables", {})
                 for table_name, table_body in tables.items():
                     columns: list[dict[str, Any]] = table_body.get("columns", [])

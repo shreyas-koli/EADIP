@@ -14,6 +14,13 @@ from app.models.warehouse import Warehouse
 from app.warehouse.connector import WarehouseConnector
 
 
+_SYSTEM_SCHEMAS: frozenset[str] = frozenset({"information_schema", "pg_catalog", "pg_toast"})
+
+def _is_system_schema(schema_name: str) -> bool:
+    """Check if a schema is a known PostgreSQL system schema."""
+    return schema_name in _SYSTEM_SCHEMAS or schema_name.startswith("pg_temp")
+
+
 class MetadataInspector:
     """
     Introspects the structure of a remote database.
@@ -42,7 +49,7 @@ class MetadataInspector:
 
     # ── Schema introspection ─────────────────────────────────────
 
-    def get_schemas(self, warehouse: Warehouse) -> list[str]:
+    def get_schemas(self, warehouse: Warehouse, include_system_schemas: bool = False) -> list[str]:
         """
         Return all schema names available in the warehouse.
 
@@ -50,6 +57,8 @@ class MetadataInspector:
         ──────────
         warehouse : Warehouse
             A registered ``Warehouse`` ORM instance.
+        include_system_schemas : bool
+            If True, includes internal system schemas. Defaults to False.
 
         Returns
         ───────
@@ -58,7 +67,10 @@ class MetadataInspector:
         """
         insp, engine = self._get_inspector(warehouse)
         try:
-            return insp.get_schema_names()
+            schemas = insp.get_schema_names()
+            if not include_system_schemas:
+                schemas = [s for s in schemas if not _is_system_schema(s)]
+            return schemas
         finally:
             engine.dispose()
 
@@ -136,7 +148,7 @@ class MetadataInspector:
 
     # ── Full database inspection ─────────────────────────────────
 
-    def inspect_database(self, warehouse: Warehouse) -> dict[str, Any]:
+    def inspect_database(self, warehouse: Warehouse, include_system_schemas: bool = False) -> dict[str, Any]:
         """
         Return a complete metadata snapshot of the warehouse.
 
@@ -148,6 +160,8 @@ class MetadataInspector:
         ──────────
         warehouse : Warehouse
             A registered ``Warehouse`` ORM instance.
+        include_system_schemas : bool
+            If True, includes internal system schemas. Defaults to False.
 
         Returns
         ───────
@@ -184,6 +198,9 @@ class MetadataInspector:
             result: dict[str, Any] = {"schemas": {}}
 
             for schema_name in insp.get_schema_names():
+                if not include_system_schemas and _is_system_schema(schema_name):
+                    continue
+
                 tables: dict[str, Any] = {}
 
                 for table_name in insp.get_table_names(schema=schema_name):
