@@ -20,6 +20,7 @@ from typing import Any
 from app.agents.metadata_agent import MetadataAgent
 from app.agents.security_agent import SecurityAgent
 from app.agents.statistics_agent import StatisticsAgent
+from app.agents.recommendation_agent import RecommendationAgent
 from app.models.warehouse import Warehouse
 from app.orchestrator.agent_orchestrator import AgentTask
 
@@ -49,6 +50,7 @@ class TaskFactory:
         self._metadata_agent   = MetadataAgent()
         self._statistics_agent = StatisticsAgent()
         self._security_agent   = SecurityAgent()
+        self._recommendation_agent = RecommendationAgent()
 
     # ── Metadata discovery plan ──────────────────────────────────
 
@@ -74,6 +76,12 @@ class TaskFactory:
              requires ``metadata`` to be present in
              :class:`~app.context.shared_context.SharedContext`
              before it can run.
+
+        * **Wave 3** — dependent on Wave 1 and Wave 2 completing:
+
+          4. ``recommendation`` — rule-based recommendations;
+             requires ``metadata``, ``statistics``, and ``security``
+             to be present in the SharedContext.
 
         Parameters
         ──────────
@@ -105,10 +113,18 @@ class TaskFactory:
             dependencies=["metadata"],
         )
 
+        recommendation_task = AgentTask(
+            name="recommendation",
+            callable=self._recommendation_agent.generate_recommendations,
+            args=(warehouse,),
+            dependencies=["metadata", "statistics", "security"],
+        )
+
         return [
             metadata_task,
             statistics_task,
             security_task,
+            recommendation_task,
         ]
 
     # ── Future plan builders (stubs) ─────────────────────────────

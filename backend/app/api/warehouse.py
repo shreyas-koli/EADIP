@@ -191,10 +191,18 @@ def test_connection(warehouse_id: int, db: DBSession):
 )
 def discover_metadata(warehouse_id: int, db: DBSession):
     """
-    Trigger metadata discovery for the specified warehouse.
+    Trigger collaborative multi-agent analysis for the specified warehouse.
 
-    Delegates to the ``AgentOrchestrator`` which orchestrates
-    agent tasks in parallel based on their dependency graph.
+    Delegates to the ``AgentOrchestrator`` which executes tasks in parallel 
+    based on their dependency graph. Current agents include:
+    * MetadataAgent
+    * StatisticsAgent
+    * SecurityAgent
+    * RecommendationAgent
+
+    Additional agents can be added to the registry over time without modifying 
+    this API, because it automatically returns the fully populated 
+    SharedContext memory bus.
 
     Returns **404** if the warehouse does not exist.
     """

@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     DATABASE_URL: str
 
+    # ── Recommendation Thresholds ────────────────────────────────
+    REC_LARGE_TABLE_ROWS: int = 100000
+    REC_WIDE_TABLE_COLS: int = 50
+    REC_EMPTY_TABLE_ROWS: int = 0
+    REC_NULLABLE_COLUMN_PCT: float = 0.5
+
 
     # ── Pydantic Settings v2 config ──────────────────────────────
     model_config = SettingsConfigDict(

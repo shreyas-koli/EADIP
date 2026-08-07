@@ -244,7 +244,7 @@ class SecurityAnalyzer:
 
         for col in columns:
             col_name: str = col.get("name", "")
-            if col_name.lower() in _SENSITIVE_KEYWORDS:
+            if any(kw in col_name.lower() for kw in _SENSITIVE_KEYWORDS):
                 issues.append({
                     "rule":        "SENSITIVE_COLUMN",
                     "severity":    _HIGH,
@@ -338,7 +338,7 @@ class SecurityAnalyzer:
 
         for col in columns:
             col_name: str = col.get("name", "")
-            is_sensitive = col_name.lower() in _SENSITIVE_KEYWORDS
+            is_sensitive = any(kw in col_name.lower() for kw in _SENSITIVE_KEYWORDS)
             is_nullable  = col.get("nullable", True)
 
             if is_sensitive and is_nullable:
