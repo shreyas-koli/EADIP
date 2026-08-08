@@ -11,6 +11,7 @@ from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
 from app.api.warehouse import router as warehouse_router
+from app.api.discovery import router as discovery_router
 from app.core.config import settings
 
 
@@ -40,6 +41,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(warehouse_router)
+app.include_router(discovery_router)
 
 
 # ── Root endpoints ───────────────────────────────────────────────

@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # ── Database ─────────────────────────────────────────────────
     DEBUG: bool = True
     DATABASE_URL: str
+    
+    # Optional dedicated PostgreSQL connection string for integration tests.
+    # E.g., postgresql://user:password@localhost:5432/aadw_test
+    TEST_DATABASE_URL: str | None = None
 
     # ── Recommendation Thresholds ────────────────────────────────
     REC_LARGE_TABLE_ROWS: int = 100000

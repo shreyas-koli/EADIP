@@ -23,6 +23,7 @@ from app.agents.statistics_agent import StatisticsAgent
 from app.agents.recommendation_agent import RecommendationAgent
 from app.agents.data_quality_agent import DataQualityAgent
 from app.models.warehouse import Warehouse
+from app.context.shared_context import SharedContext
 from app.orchestrator.agent_orchestrator import AgentTask
 
 
@@ -59,6 +60,7 @@ class TaskFactory:
     def build_metadata_discovery(
         self,
         warehouse: Warehouse,
+        context: SharedContext,
     ) -> list[AgentTask]:
         """
         Build an execution plan for warehouse metadata discovery.
@@ -101,33 +103,33 @@ class TaskFactory:
         metadata_task = AgentTask(
             name="metadata",
             callable=self._metadata_agent.discover_metadata,
-            args=(warehouse,),
+            args=(warehouse, context),
         )
 
         statistics_task = AgentTask(
             name="statistics",
             callable=self._statistics_agent.generate_statistics,
-            args=(warehouse,),
+            args=(warehouse, context),
         )
 
         security_task = AgentTask(
             name="security",
             callable=self._security_agent.generate_security_report,
-            args=(warehouse,),
+            args=(warehouse, context),
             dependencies=["metadata"],
         )
 
         data_quality_task = AgentTask(
             name="data_quality",
             callable=self._data_quality_agent.generate_quality_report,
-            args=(warehouse,),
+            args=(warehouse, context),
             dependencies=["metadata"],
         )
 
         recommendation_task = AgentTask(
             name="recommendation",
             callable=self._recommendation_agent.generate_recommendations,
-            args=(warehouse,),
+            args=(warehouse, context),
             dependencies=["metadata", "statistics", "security", "data_quality"],
         )
 

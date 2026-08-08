@@ -32,7 +32,7 @@ class RecommendationAgent:
 
     # ── Generation ───────────────────────────────────────────────
 
-    def generate_recommendations(self, warehouse: Warehouse) -> dict[str, Any]:
+    def generate_recommendations(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
         """
         Generate recommendations for the warehouse and store them in context.
 
@@ -46,9 +46,9 @@ class RecommendationAgent:
         dict[str, Any]
             The generated recommendations snapshot.
         """
-        recommendations = self._engine.analyse(warehouse)
+        recommendations = self._engine.analyse(warehouse, context)
         
-        SharedContext().set_agent_result(
+        context.set_agent_result(
             "recommendation",
             recommendations,
         )

@@ -39,7 +39,7 @@ class SecurityAgent:
 
     # ── Security report generation ───────────────────────────────
 
-    def generate_security_report(self, warehouse: Warehouse) -> dict[str, Any]:
+    def generate_security_report(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
         """
         Analyse the warehouse and return a security report snapshot.
 
@@ -79,12 +79,12 @@ class SecurityAgent:
         Writes the returned report to the shared memory bus under
         the key ``"security"`` via::
 
-            SharedContext().set_agent_result("security", security_report)
+            context.set_agent_result("security", security_report)
 
         This makes the report available to the orchestrator summary
         and any downstream agents that declare a ``"security"``
         dependency.
         """
-        security_report = self._analyzer.analyse(warehouse)
-        SharedContext().set_agent_result("security", security_report)
+        security_report = self._analyzer.analyse(warehouse, context)
+        context.set_agent_result("security", security_report)
         return security_report

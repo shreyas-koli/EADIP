@@ -25,7 +25,7 @@ class DataQualityAgent:
         """Initialize the agent with its underlying analyzer."""
         self._analyzer = DataQualityAnalyzer()
 
-    def generate_quality_report(self, warehouse: Warehouse) -> dict[str, Any]:
+    def generate_quality_report(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
         """
         Generate a data quality report for the target warehouse.
 
@@ -39,9 +39,9 @@ class DataQualityAgent:
         dict[str, Any]
             The generated quality result containing scores and issues.
         """
-        quality_result = self._analyzer.analyse(warehouse)
+        quality_result = self._analyzer.analyse(warehouse, context)
 
-        SharedContext().set_agent_result(
+        context.set_agent_result(
             "data_quality",
             quality_result,
         )

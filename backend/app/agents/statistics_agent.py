@@ -34,7 +34,7 @@ class StatisticsAgent:
 
     # ── Statistics generation ────────────────────────────────────
 
-    def generate_statistics(self, warehouse: Warehouse) -> dict[str, Any]:
+    def generate_statistics(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
         """
         Analyse the warehouse and return a statistics snapshot.
 
@@ -73,5 +73,5 @@ class StatisticsAgent:
         """
         # return self._analyzer.analyse(warehouse)
         statistics = self._analyzer.analyse(warehouse)
-        SharedContext().set_agent_result("statistics", statistics)
+        context.set_agent_result("statistics", statistics)
         return statistics

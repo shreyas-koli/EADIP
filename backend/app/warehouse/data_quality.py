@@ -30,7 +30,7 @@ class DataQualityAnalyzer:
     Evaluates warehouse data quality dimensions using available metadata.
     """
 
-    def analyse(self, warehouse: Warehouse) -> dict[str, Any]:
+    def analyse(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
         """
         Analyse the warehouse and return a data quality report.
 
@@ -44,7 +44,6 @@ class DataQualityAnalyzer:
         dict[str, Any]
             A dictionary containing the quality score, dimensions, and issues.
         """
-        context = SharedContext()
         metadata = context.get_agent_result("metadata") or {}
 
         schemas = metadata.get("schemas", {})

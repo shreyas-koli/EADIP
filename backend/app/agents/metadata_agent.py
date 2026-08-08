@@ -33,7 +33,7 @@ class MetadataAgent:
 
     # ── Discovery ────────────────────────────────────────────────
 
-    def discover_metadata(self, warehouse: Warehouse) -> dict[str, Any]:
+    def discover_metadata(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
         """
         Inspect the warehouse and return its full metadata snapshot.
 
@@ -71,5 +71,5 @@ class MetadataAgent:
                 }
         """
         result = self._inspector.inspect_database(warehouse)
-        SharedContext().set_agent_result("metadata", result)
+        context.set_agent_result("metadata", result)
         return result

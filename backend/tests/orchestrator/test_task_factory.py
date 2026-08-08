@@ -1,6 +1,7 @@
 from app.orchestrator.task_factory import TaskFactory
 from app.models.warehouse import Warehouse
 from app.orchestrator.agent_orchestrator import AgentOrchestrator
+from app.context.shared_context import SharedContext
 
 def test_metadata_discovery_graph():
     """
@@ -8,7 +9,8 @@ def test_metadata_discovery_graph():
     """
     factory = TaskFactory()
     warehouse = Warehouse(name="test")
-    tasks = factory.build_metadata_discovery(warehouse)
+    context = SharedContext()
+    tasks = factory.build_metadata_discovery(warehouse, context)
     
     task_map = {t.name: t for t in tasks}
     
@@ -29,7 +31,8 @@ def test_no_circular_dependencies():
     """
     factory = TaskFactory()
     warehouse = Warehouse(name="test")
-    tasks = factory.build_metadata_discovery(warehouse)
+    context = SharedContext()
+    tasks = factory.build_metadata_discovery(warehouse, context)
     
     task_map = {t.name: t for t in tasks}
     
@@ -38,3 +41,20 @@ def test_no_circular_dependencies():
         AgentOrchestrator._validate_graph(task_map)
     except ValueError as e:
         assert False, f"Circular dependency or missing dependency detected in TaskFactory graph: {e}"
+
+def test_explicit_context_propagation():
+    """
+    Verify that every AgentTask receives the exact same SharedContext instance.
+    """
+    factory = TaskFactory()
+    warehouse = Warehouse(name="test")
+    context = SharedContext()
+    tasks = factory.build_metadata_discovery(warehouse, context)
+    
+    task_names = {"metadata", "statistics", "security", "data_quality", "recommendation"}
+    
+    for task in tasks:
+        assert task.name in task_names
+        # args[0] is warehouse, args[1] is context
+        assert len(task.args) == 2
+        assert task.args[1] is context, f"Task {task.name} did not receive the exact SharedContext instance"

@@ -69,3 +69,49 @@ def test_dependency_ordering():
     
     # Assert task_a finishes before task_b starts
     assert task_a_end <= task_b_start
+
+def test_skipped_status_semantics():
+    """
+    Verify that when an agent's dependency fails, it is marked as SKIPPED,
+    not FAILED, in both SharedContext and the execution summary.
+    """
+    orchestrator = AgentOrchestrator()
+    
+    def fail_task():
+        raise RuntimeError("I failed")
+        
+    def skip_task():
+        pass
+        
+    tasks = [
+        AgentTask(name="metadata", callable=fail_task, args=()),
+        AgentTask(name="security", callable=skip_task, args=(), dependencies=["metadata"]),
+    ]
+    
+    result = orchestrator.execute_parallel(tasks)
+    
+    assert "metadata" in result["failed"]
+    assert "security" in result["skipped"]
+    assert "security" not in result["failed"]
+    
+    # Verify the SharedContext status
+    from app.context.shared_context import AgentStatus
+    assert orchestrator._context._agent_status["security"] == AgentStatus.SKIPPED
+    assert orchestrator._context._agent_status["metadata"] == AgentStatus.FAILED
+
+def test_duplicate_task_names_rejected():
+    """
+    Verify that execute_parallel raises a ValueError if multiple tasks share the same name.
+    """
+    from app.context.shared_context import SharedContext
+    import pytest
+    
+    orchestrator = AgentOrchestrator(context=SharedContext())
+
+    tasks = [
+        AgentTask(name="metadata", callable=lambda: None),
+        AgentTask(name="metadata", callable=lambda: None),
+    ]
+
+    with pytest.raises(ValueError, match="Duplicate agent task names are not allowed."):
+        orchestrator.execute_parallel(tasks)

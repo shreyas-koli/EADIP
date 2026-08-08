@@ -127,7 +127,7 @@ class SecurityAnalyzer:
 
     # ── Public API ───────────────────────────────────────────────
 
-    def analyse(self, warehouse: Warehouse, include_system_schemas: bool = False) -> dict[str, Any]:
+    def analyse(self, warehouse: Warehouse, context: SharedContext, include_system_schemas: bool = False) -> dict[str, Any]:
         """
         Run all security rules against the warehouse metadata and
         return a structured security report.
@@ -138,6 +138,8 @@ class SecurityAnalyzer:
             A registered, active ``Warehouse`` ORM instance.  Used
             only for identity information (``id``, ``name``) embedded
             in the report — no live connection is made.
+        context : SharedContext
+            The shared memory bus containing the metadata snapshot.
         include_system_schemas : bool
             If True, overrides default behavior and includes system
             schemas in the security analysis. Defaults to False.
@@ -171,7 +173,7 @@ class SecurityAnalyzer:
                     "recommendations": [str, ...],
                 }
         """
-        metadata = SharedContext().get_agent_result("metadata")
+        metadata = context.get_agent_result("metadata")
         issues: list[dict[str, Any]] = []
 
         if metadata:

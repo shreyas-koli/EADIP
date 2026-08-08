@@ -40,7 +40,7 @@ class RecommendationEngine:
             "data_quality": self._generate_data_quality_recommendations,
         }
 
-    def analyse(self, warehouse: Warehouse) -> dict[str, Any]:
+    def analyse(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
         """
         Analyse the warehouse and return recommendations.
 
@@ -54,7 +54,6 @@ class RecommendationEngine:
         dict[str, Any]
             A dictionary containing summary, recommendations, and priority.
         """
-        context = SharedContext()
         recommendations: list[dict[str, Any]] = []
 
         for agent_key, rule_generator in self._registry.items():

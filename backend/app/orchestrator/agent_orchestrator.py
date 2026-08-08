@@ -110,16 +110,18 @@ class AgentOrchestrator:
         ])
     """
 
-    def __init__(self, max_workers: int = 5) -> None:
+    def __init__(self, context: SharedContext | None = None, max_workers: int = 5) -> None:
         """
         Initialise the orchestration engine.
 
         Parameters
         ──────────
+        context : SharedContext | None
+            The explicit shared memory bus. If None, creates a new one.
         max_workers : int
             Maximum number of concurrent threads (default 5).
         """
-        self._context = SharedContext()
+        self._context = context if context is not None else SharedContext()
         self._max_workers = max_workers
 
     # ── Public API ───────────────────────────────────────────────
@@ -162,6 +164,11 @@ class AgentOrchestrator:
             If a task declares a dependency on a name that does not
             appear in the task list (broken graph).
         """
+        # ── Validate unique task names ───────────────────────────
+        task_names = [t.name for t in tasks]
+        if len(task_names) != len(set(task_names)):
+            raise ValueError("Duplicate agent task names are not allowed.")
+
         # ── Validate the dependency graph ────────────────────────
         task_map: dict[str, AgentTask] = {t.name: t for t in tasks}
         self._validate_graph(task_map)
@@ -205,19 +212,35 @@ class AgentOrchestrator:
                 for name in blocked:
                     skipped.append(name)
                     remaining.discard(name)
-                    self._context.set_agent_status(name, AgentStatus.FAILED)
+                    self._context.set_agent_status(name, AgentStatus.SKIPPED)
                     self._context.add_execution_log(
                         f"Agent '{name}' skipped — dependency failed."
                     )
+                    agent_executions.append({
+                        "agent": name,
+                        "wave": wave_id,
+                        "thread": "orchestrator",
+                        "started_at": datetime.now(timezone.utc).isoformat(),
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "duration_ms": 0.0,
+                    })
 
                 if not ready:
                     # No tasks can proceed — break to avoid infinite loop
                     for name in remaining:
                         skipped.append(name)
-                        self._context.set_agent_status(name, AgentStatus.FAILED)
+                        self._context.set_agent_status(name, AgentStatus.SKIPPED)
                         self._context.add_execution_log(
                             f"Agent '{name}' skipped — unresolvable dependencies."
                         )
+                        agent_executions.append({
+                            "agent": name,
+                            "wave": wave_id,
+                            "thread": "orchestrator",
+                            "started_at": datetime.now(timezone.utc).isoformat(),
+                            "finished_at": datetime.now(timezone.utc).isoformat(),
+                            "duration_ms": 0.0,
+                        })
                     remaining.clear()
                     break
 

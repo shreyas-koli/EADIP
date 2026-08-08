@@ -15,7 +15,8 @@ from app.models.user import User  # noqa: F401
 # from app.models.document import Document  # noqa: F401
 # from app.models.agent import Agent        # noqa: F401
 
-from app.models.warehouse import Warehouse
+from app.models.warehouse import Warehouse  # noqa: F401
+from app.models.execution import DiscoverySession, AgentExecution  # noqa: F401
 
 
 def init_db() -> None:

@@ -37,6 +37,7 @@ class AgentStatus(str, Enum):
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
 
 
 # ── Shared context store ─────────────────────────────────────────
@@ -80,23 +81,8 @@ class SharedContext:
         statistics = ctx.get_agent_result("statistics")
     """
 
-    _instance: SharedContext | None = None
-    _lock: threading.Lock = threading.Lock()
-
-    # ── Singleton ────────────────────────────────────────────────
-
-    def __new__(cls) -> SharedContext:
-        """Return the single shared instance (thread-safe)."""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    instance = super().__new__(cls)
-                    instance._initialise()
-                    cls._instance = instance
-        return cls._instance
-
-    def _initialise(self) -> None:
-        """Set up default internal state (called once)."""
+    def __init__(self) -> None:
+        """Initialise the shared context store (non-singleton)."""
         self._rlock = threading.RLock()
 
         self._session_id: str = str(uuid.uuid4())
