@@ -37,6 +37,7 @@ class RecommendationEngine:
             "metadata": self._generate_metadata_recommendations,
             "statistics": self._generate_statistics_recommendations,
             "security": self._generate_security_recommendations,
+            "data_quality": self._generate_data_quality_recommendations,
         }
 
     def analyse(self, warehouse: Warehouse) -> dict[str, Any]:
@@ -281,6 +282,56 @@ class RecommendationEngine:
                 source="security",
             ))
             
+        return recs
+
+    # ── Data Quality Rules ───────────────────────────────────────
+
+    def _generate_data_quality_recommendations(
+        self, data_quality: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """
+        Convert existing data quality issues into actionable recommendations.
+        """
+        recs: list[dict[str, Any]] = []
+        issues = data_quality.get("issues", [])
+
+        if not issues:
+            return recs
+
+        for issue in issues:
+            rule = issue.get("rule", "Data Quality Issue")
+            schema = issue.get("schema", "unknown")
+            table = issue.get("table", "unknown")
+            column = issue.get("column", None)
+            severity = issue.get("severity", _MEDIUM)
+
+            description = ""
+            if rule == "EXCESSIVE_TABLE_NULLABILITY":
+                description = "Recommend reviewing nullable columns and enforcing NOT NULL constraints where appropriate."
+            elif rule == "MISSING_UNIQUENESS_CONSTRAINTS":
+                description = "Recommend defining an appropriate primary key or unique constraint after confirming the table's business semantics."
+            elif rule == "INVALID_OR_UNKNOWN_DATATYPE":
+                description = "Recommend defining an explicit valid datatype."
+            elif rule == "INCONSISTENT_DATATYPES":
+                description = "Recommend standardizing the datatype across the affected structures."
+            else:
+                description = "Address the detected data quality anomaly."
+
+            recs.append(self._build_recommendation(
+                recommendation_type=rule.lower().replace(" ", "_").replace("-", "_"),
+                schema=schema,
+                table=table,
+                column=column,
+                priority=severity,
+                impact=severity,
+                effort=_MEDIUM,
+                confidence=1.0,
+                category="Data Quality",
+                title=f"Data Quality Alert: {rule} on {schema}.{table}",
+                description=description,
+                source="data_quality",
+            ))
+
         return recs
 
     # ── Helper ───────────────────────────────────────────────────

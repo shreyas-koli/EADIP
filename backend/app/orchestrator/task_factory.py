@@ -21,6 +21,7 @@ from app.agents.metadata_agent import MetadataAgent
 from app.agents.security_agent import SecurityAgent
 from app.agents.statistics_agent import StatisticsAgent
 from app.agents.recommendation_agent import RecommendationAgent
+from app.agents.data_quality_agent import DataQualityAgent
 from app.models.warehouse import Warehouse
 from app.orchestrator.agent_orchestrator import AgentTask
 
@@ -51,6 +52,7 @@ class TaskFactory:
         self._statistics_agent = StatisticsAgent()
         self._security_agent   = SecurityAgent()
         self._recommendation_agent = RecommendationAgent()
+        self._data_quality_agent = DataQualityAgent()
 
     # ── Metadata discovery plan ──────────────────────────────────
 
@@ -61,7 +63,7 @@ class TaskFactory:
         """
         Build an execution plan for warehouse metadata discovery.
 
-        Constructs ``AgentTask`` descriptors for three agents and
+        Constructs ``AgentTask`` descriptors for multiple agents and
         declares their dependency relationships so the orchestrator
         can schedule them in the correct order:
 
@@ -76,12 +78,14 @@ class TaskFactory:
              requires ``metadata`` to be present in
              :class:`~app.context.shared_context.SharedContext`
              before it can run.
+          4. ``data_quality`` — deterministic data quality dimension scoring;
+             requires ``metadata`` to be present in SharedContext.
 
         * **Wave 3** — dependent on Wave 1 and Wave 2 completing:
 
-          4. ``recommendation`` — rule-based recommendations;
-             requires ``metadata``, ``statistics``, and ``security``
-             to be present in the SharedContext.
+          5. ``recommendation`` — rule-based recommendations;
+             requires ``metadata``, ``statistics``, ``security``,
+             and ``data_quality`` to be present in the SharedContext.
 
         Parameters
         ──────────
@@ -91,7 +95,7 @@ class TaskFactory:
         Returns
         ───────
         list[AgentTask]
-            Three tasks — metadata, statistics, and security —
+            Five tasks — metadata, statistics, security, data_quality, and recommendation —
             ready for ``AgentOrchestrator.execute_parallel()``.
         """
         metadata_task = AgentTask(
@@ -113,17 +117,25 @@ class TaskFactory:
             dependencies=["metadata"],
         )
 
+        data_quality_task = AgentTask(
+            name="data_quality",
+            callable=self._data_quality_agent.generate_quality_report,
+            args=(warehouse,),
+            dependencies=["metadata"],
+        )
+
         recommendation_task = AgentTask(
             name="recommendation",
             callable=self._recommendation_agent.generate_recommendations,
             args=(warehouse,),
-            dependencies=["metadata", "statistics", "security"],
+            dependencies=["metadata", "statistics", "security", "data_quality"],
         )
 
         return [
             metadata_task,
             statistics_task,
             security_task,
+            data_quality_task,
             recommendation_task,
         ]
 

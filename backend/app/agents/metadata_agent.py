@@ -16,16 +16,6 @@ from app.warehouse.inspector import MetadataInspector
 from app.context.shared_context import SharedContext
 
 
-import threading
-import time
-
-print(f"[{threading.current_thread().name}] Metadata START : {time.perf_counter()}")
-
-time.sleep(3)
-
-print(f"[{threading.current_thread().name}] Metadata END   : {time.perf_counter()}")
-
-
 class MetadataAgent:
     """
     Agent responsible for discovering the structural metadata of
@@ -44,18 +34,6 @@ class MetadataAgent:
     # ── Discovery ────────────────────────────────────────────────
 
     def discover_metadata(self, warehouse: Warehouse) -> dict[str, Any]:
-        import threading
-        import time
-
-        print(
-            f"[{threading.current_thread().name}] Metadata START {time.perf_counter()}"
-        )
-
-        time.sleep(3)
-
-        print(
-            f"[{threading.current_thread().name}] Metadata END {time.perf_counter()}"
-        )
         """
         Inspect the warehouse and return its full metadata snapshot.
 

@@ -179,7 +179,7 @@ class AgentOrchestrator:
         skipped: list[str] = []
         agent_executions: list[dict[str, Any]] = []
 
-        overall_start = time.perf_counter()
+        overall_start_ns = time.perf_counter_ns()
 
         # ── Execute in waves ─────────────────────────────────────
         remaining = set(task_map.keys())
@@ -234,7 +234,7 @@ class AgentOrchestrator:
                 remaining -= set(ready)
                 wave_id += 1
 
-        overall_duration_ms = int((time.perf_counter() - overall_start) * 1000)
+        overall_duration_ms = (time.perf_counter_ns() - overall_start_ns) / 1_000_000
 
         self._context.add_execution_log(
             f"Orchestrator finished. "
@@ -347,7 +347,7 @@ class AgentOrchestrator:
         self._context.set_agent_status(task.name, AgentStatus.RUNNING)
         self._context.add_execution_log(f"Agent '{task.name}' started.")
 
-        start = time.perf_counter()
+        start_ns = time.perf_counter_ns()
         start_iso = datetime.now(timezone.utc).isoformat()
         status = AgentStatus.COMPLETED
         
@@ -361,9 +361,9 @@ class AgentOrchestrator:
             error_msg = str(exc)
             tb_str = traceback.format_exc()
         finally:
-            end = time.perf_counter()
+            end_ns = time.perf_counter_ns()
             end_iso = datetime.now(timezone.utc).isoformat()
-            duration_ms = int((end - start) * 1000)
+            duration_ms = (end_ns - start_ns) / 1_000_000
 
             self._context.set_agent_status(task.name, status)
             self._context.add_execution_history(

@@ -17,15 +17,6 @@ from app.context.shared_context import SharedContext
 
 
 
-# import threading
-# import time
-
-# print(f"[{threading.current_thread().name}] Statistics START : {time.perf_counter()}")
-
-# time.sleep(3)
-
-# print(f"[{threading.current_thread().name}] Statistics END   : {time.perf_counter()}")
-
 class StatisticsAgent:
     """
     Agent responsible for computing structural and value-level
@@ -44,19 +35,6 @@ class StatisticsAgent:
     # ── Statistics generation ────────────────────────────────────
 
     def generate_statistics(self, warehouse: Warehouse) -> dict[str, Any]:
-        # raise Exception("Statistics Agent Test Failure")
-        # import threading
-        # import time
-
-        # print(
-        #     f"[{threading.current_thread().name}] Statistics START {time.perf_counter()}"
-        # )
-
-        # time.sleep(3)
-
-        # print(
-        #     f"[{threading.current_thread().name}] Statistics END {time.perf_counter()}"
-        # )
         """
         Analyse the warehouse and return a statistics snapshot.
 
