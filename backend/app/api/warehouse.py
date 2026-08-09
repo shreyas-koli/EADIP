@@ -6,7 +6,12 @@ service, connector, and orchestrator.  Responsible only for
 request / response mapping, status codes, and error translation.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from typing import Literal
+from fastapi import APIRouter, HTTPException, status as http_status, Depends, Query
+from app.api.auth import oauth2_scheme
+from app.auth.service import get_current_user
+from app.services.execution_service import ExecutionService
+from app.schemas.execution import DiscoveryHistoryPaginatedResponse, DiscoveryHistoryResponse, DiscoverySessionResponse
 
 from app.database.session import DBSession
 from app.orchestrator.agent_orchestrator import AgentOrchestrator
@@ -35,7 +40,7 @@ router = APIRouter(
 @router.post(
     "/",
     response_model=WarehouseResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=http_status.HTTP_201_CREATED,
     summary="Register a new warehouse",
 )
 def create(warehouse_data: WarehouseCreate, db: DBSession):
@@ -51,7 +56,7 @@ def create(warehouse_data: WarehouseCreate, db: DBSession):
         warehouse = create_warehouse(db, warehouse_data)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
 
@@ -91,7 +96,7 @@ def get_warehouse(warehouse_id: int, db: DBSession):
 
     if warehouse is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"Warehouse with id {warehouse_id} not found.",
         )
 
@@ -117,7 +122,7 @@ def update(warehouse_id: int, warehouse_data: WarehouseUpdate, db: DBSession):
 
     if warehouse is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"Warehouse with id {warehouse_id} not found.",
         )
 
@@ -168,7 +173,7 @@ def test_connection(warehouse_id: int, db: DBSession):
 
     if warehouse is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"Warehouse with id {warehouse_id} not found.",
         )
 
@@ -180,3 +185,76 @@ def test_connection(warehouse_id: int, db: DBSession):
         "warehouse_name": warehouse.name,
         "connected": is_connected,
     }
+
+# ── GET /{id}/history ────────────────────────────────────────────
+
+
+@router.get(
+    "/{warehouse_id}/history",
+    response_model=DiscoveryHistoryPaginatedResponse,
+    summary="Get discovery history for a warehouse",
+)
+def get_warehouse_history(
+    warehouse_id: int, 
+    db: DBSession, 
+    token: str = Depends(oauth2_scheme),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(10, ge=1, le=100, description="Items per page"),
+    status: Literal["COMPLETED", "FAILED"] | None = Query(None, description="Filter by status")
+):
+    """
+    Return high-level discovery history for a warehouse.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    warehouse = get_warehouse_by_id(db, warehouse_id)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+        
+    return ExecutionService.get_history(db, warehouse_id, page=page, page_size=page_size, status=status)
+
+
+# ── GET /{id}/history/{session_id} ───────────────────────────────
+
+
+@router.get(
+    "/{warehouse_id}/history/{session_id}",
+    response_model=DiscoverySessionResponse,
+    summary="Get detailed discovery execution for a warehouse",
+)
+def get_warehouse_execution(warehouse_id: int, session_id: str, db: DBSession, token: str = Depends(oauth2_scheme)):
+    """
+    Return the complete execution detail for a single discovery session.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    warehouse = get_warehouse_by_id(db, warehouse_id)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+        
+    execution = ExecutionService.get_execution(db, warehouse_id, session_id)
+    if execution is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Execution session {session_id} not found for warehouse {warehouse_id}.",
+        )
+        
+    return execution

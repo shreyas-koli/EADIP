@@ -254,3 +254,355 @@ def test_explicit_context_api_propagation(db_session):
         
         # Verify AgentOrchestrator was instantiated with the EXACT SAME context
         mock_orchestrator_class.assert_called_once_with(context=context)
+
+# --- HISTORY API TESTS ---
+
+def test_get_history_empty(db_session):
+    session, wh, _, headers = db_session
+    response = client.get(f"/warehouses/{wh.id}/history", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["items"] == []
+    assert data["total"] == 0
+    assert data["page"] == 1
+    assert data["page_size"] == 10
+
+def test_pagination_default(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    # Create 12 records
+    for i in range(12):
+        ExecutionService.persist_execution(session, wh.id, {
+            "session_id": f"api_test_sess_{i}",
+            "completed": ["metadata"],
+            "agent_execution": [{"agent": "metadata", "wave": 1}]
+        })
+        
+    response = client.get(f"/warehouses/{wh.id}/history", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) == 10
+    assert data["total"] == 12
+    assert data["page"] == 1
+    assert data["page_size"] == 10
+
+def test_pagination_second_page(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    for i in range(12):
+        ExecutionService.persist_execution(session, wh.id, {
+            "session_id": f"api_test_sess_{i}",
+            "completed": ["metadata"],
+            "agent_execution": [{"agent": "metadata", "wave": 1}]
+        })
+    response = client.get(f"/warehouses/{wh.id}/history?page=2&page_size=10", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) == 2
+    assert data["page"] == 2
+    assert data["total"] == 12
+
+def test_pagination_custom_size(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    for i in range(12):
+        ExecutionService.persist_execution(session, wh.id, {
+            "session_id": f"api_test_sess_{i}",
+            "completed": ["metadata"],
+            "agent_execution": [{"agent": "metadata", "wave": 1}]
+        })
+    response = client.get(f"/warehouses/{wh.id}/history?page=1&page_size=5", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) == 5
+    assert data["page_size"] == 5
+    assert data["total"] == 12
+
+def test_pagination_beyond_available(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    for i in range(12):
+        ExecutionService.persist_execution(session, wh.id, {
+            "session_id": f"api_test_sess_{i}",
+            "completed": ["metadata"],
+            "agent_execution": [{"agent": "metadata", "wave": 1}]
+        })
+    response = client.get(f"/warehouses/{wh.id}/history?page=10&page_size=10", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["items"] == []
+    assert data["total"] == 12
+
+def test_filter_completed(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    # Add a failed session
+    ExecutionService.persist_execution(session, wh.id, {
+        "session_id": f"api_test_sess_fail",
+        "failed": ["metadata"],
+        "agent_execution": [{"agent": "metadata", "status": "FAILED", "wave": 1}]
+    })
+    
+    response = client.get(f"/warehouses/{wh.id}/history?status=COMPLETED", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert all(item["status"] == "COMPLETED" for item in data["items"])
+
+def test_filter_failed(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    # Add a failed session
+    ExecutionService.persist_execution(session, wh.id, {
+        "session_id": f"api_test_sess_fail",
+        "failed": ["metadata"],
+        "agent_execution": [{"agent": "metadata", "status": "FAILED", "wave": 1}]
+    })
+    response = client.get(f"/warehouses/{wh.id}/history?status=FAILED", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["status"] == "FAILED"
+
+def test_invalid_status(db_session):
+    session, wh, _, headers = db_session
+    response = client.get(f"/warehouses/{wh.id}/history?status=INVALID", headers=headers)
+    assert response.status_code == 422
+
+def test_invalid_page(db_session):
+    session, wh, _, headers = db_session
+    response = client.get(f"/warehouses/{wh.id}/history?page=0", headers=headers)
+    assert response.status_code == 422
+
+def test_invalid_page_size(db_session):
+    session, wh, _, headers = db_session
+    response = client.get(f"/warehouses/{wh.id}/history?page_size=101", headers=headers)
+    assert response.status_code == 422
+    
+def test_get_execution_detail(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    session_id = "api_test_sess_detail"
+    ExecutionService.persist_execution(session, wh.id, {
+        "session_id": session_id,
+        "completed": ["metadata"],
+        "agent_execution": [{"agent": "metadata", "wave": 1, "duration_ms": 100.0}],
+        "agent_results": {"recommendation": {"rec1": "val1"}}
+    })
+    
+    response = client.get(f"/warehouses/{wh.id}/history/{session_id}", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["session_id"] == session_id
+    assert len(data["agent_executions"]) == 1
+    assert data["agent_executions"][0]["agent_name"] == "metadata"
+    assert data["recommendations"] == {"rec1": "val1"}
+
+def test_get_history_invalid_warehouse(db_session):
+    session, wh, _, headers = db_session
+    response = client.get("/warehouses/9999/history", headers=headers)
+    assert response.status_code == 404
+
+def test_get_execution_invalid_session(db_session):
+    session, wh, _, headers = db_session
+    response = client.get(f"/warehouses/{wh.id}/history/nonexistent", headers=headers)
+    assert response.status_code == 404
+
+def test_cross_warehouse_isolation(db_session):
+    session, wh1, _, headers = db_session
+    
+    # Create second warehouse
+    wh2 = Warehouse(
+        name=f"test_wh_api_{uuid.uuid4()}",
+        db_type="PostgreSQL",
+        host="localhost",
+        port=5432,
+        database_name="test_db2",
+        username="test_user",
+        encrypted_password="encrypted",
+        is_active=True
+    )
+    session.add(wh2)
+    session.commit()
+    session.refresh(wh2)
+    
+    # Create session in warehouse 2
+    from app.services.execution_service import ExecutionService
+    sess_id = "api_test_cross"
+    ExecutionService.persist_execution(session, wh2.id, {
+        "session_id": sess_id,
+        "completed": ["metadata"],
+        "agent_execution": [{"agent": "metadata", "wave": 1}]
+    })
+    
+    # Try to access it from warehouse 1
+    response = client.get(f"/warehouses/{wh1.id}/history/{sess_id}", headers=headers)
+    assert response.status_code == 404
+
+# --- SECURITY API TESTS ---
+
+def test_missing_authentication_history(db_session):
+    session, wh, _, _ = db_session
+    response = client.get(f"/warehouses/{wh.id}/history")
+    assert response.status_code == 401
+    
+def test_invalid_authentication_history(db_session):
+    session, wh, _, _ = db_session
+    response = client.get(f"/warehouses/{wh.id}/history", headers={"Authorization": "Bearer invalid_token"})
+    assert response.status_code == 401
+    
+def test_missing_authentication_execution(db_session):
+    session, wh, _, _ = db_session
+    response = client.get(f"/warehouses/{wh.id}/history/dummy_session")
+    assert response.status_code == 401
+
+def test_history_isolation(db_session):
+    session, wh1, _, headers = db_session
+    
+    wh2 = Warehouse(
+        name=f"test_wh_api_{uuid.uuid4()}",
+        db_type="PostgreSQL",
+        host="localhost",
+        port=5432,
+        database_name="test_db2",
+        username="test_user",
+        encrypted_password="encrypted",
+        is_active=True
+    )
+    session.add(wh2)
+    session.commit()
+    session.refresh(wh2)
+    
+    from app.services.execution_service import ExecutionService
+    ExecutionService.persist_execution(session, wh1.id, {
+        "session_id": "api_test_wh1",
+        "completed": ["metadata"],
+        "agent_execution": [{"agent": "metadata", "wave": 1}]
+    })
+    
+    ExecutionService.persist_execution(session, wh2.id, {
+        "session_id": "api_test_wh2",
+        "completed": ["metadata"],
+        "agent_execution": [{"agent": "metadata", "wave": 1}]
+    })
+    
+    response = client.get(f"/warehouses/{wh1.id}/history", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["session_id"] == "api_test_wh1"
+
+def test_history_response_contract(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    ExecutionService.persist_execution(session, wh.id, {
+        "session_id": "api_test_contract",
+        "completed": ["metadata"],
+        "agent_execution": [{"agent": "metadata", "wave": 1}]
+    })
+    
+    response = client.get(f"/warehouses/{wh.id}/history", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    item = data["items"][0]
+    
+    # Allowed fields in history
+    allowed_keys = {"session_id", "warehouse_id", "started_at", "finished_at", "status", "total_duration_ms"}
+    assert set(item.keys()) == allowed_keys
+    
+    # Explicitly verify sensitive/unwanted fields are missing
+    assert "agent_executions" not in item
+    assert "recommendations" not in item
+    assert "encrypted_password" not in item
+    assert "username" not in item
+
+def test_detail_response_contract(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    ExecutionService.persist_execution(session, wh.id, {
+        "session_id": "api_test_detail_contract",
+        "completed": ["metadata"],
+        "agent_execution": [{"agent": "metadata", "wave": 1, "duration_ms": 100.0, "status": "COMPLETED"}],
+        "agent_results": {"recommendation": {"rec1": "val1"}}
+    })
+    
+    response = client.get(f"/warehouses/{wh.id}/history/api_test_detail_contract", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Detail fields
+    allowed_keys = {"session_id", "warehouse_id", "started_at", "finished_at", "status", "total_duration_ms", "agent_executions", "recommendations"}
+    assert set(data.keys()) == allowed_keys
+    
+    # Agent execution fields
+    agent_exec = data["agent_executions"][0]
+    agent_allowed_keys = {"agent_name", "status", "started_at", "finished_at", "duration_ms", "wave", "error"}
+    assert set(agent_exec.keys()) == agent_allowed_keys
+    
+    # Ensure recommendations are returned unchanged
+    assert data["recommendations"] == {"rec1": "val1"}
+
+def test_null_field_handling(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    # Seed an execution with missing optional fields
+    ExecutionService.persist_execution(session, wh.id, {
+        "session_id": "api_test_nulls",
+        # no completed or failed, simulating a crash or immediate cancellation
+        "failed": ["metadata"], # Make it FAILED status
+        "agent_execution": [{
+            "agent": "metadata", 
+            "status": "FAILED", 
+            "wave": 1,
+            # Explicitly omitting duration_ms and finished_at
+        }]
+    })
+    
+    # Manually nullify finished_at on the session itself if persist_execution set it
+    from app.models.execution import DiscoverySession, AgentExecution
+    sess_obj = session.query(DiscoverySession).filter_by(session_id="api_test_nulls").first()
+    sess_obj.finished_at = None
+    sess_obj.total_duration_ms = None
+    
+    agent_obj = session.query(AgentExecution).filter_by(session_id=sess_obj.id).first()
+    agent_obj.finished_at = None
+    agent_obj.duration_ms = None
+    agent_obj.error = None
+    session.commit()
+    
+    response = client.get(f"/warehouses/{wh.id}/history/api_test_nulls", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["finished_at"] is None
+    assert data["total_duration_ms"] is None
+    
+    agent_exec = data["agent_executions"][0]
+    assert agent_exec["finished_at"] is None
+    assert agent_exec["duration_ms"] is None
+    assert agent_exec["error"] is None
+
+def test_api_filter_and_pagination(db_session):
+    session, wh, _, headers = db_session
+    from app.services.execution_service import ExecutionService
+    for i in range(8):
+        ExecutionService.persist_execution(session, wh.id, {
+            "session_id": f"api_test_comp_{i}",
+            "completed": ["metadata"],
+            "agent_execution": [{"agent": "metadata", "wave": 1}]
+        })
+    for i in range(5):
+        ExecutionService.persist_execution(session, wh.id, {
+            "session_id": f"api_test_fail_{i}",
+            "failed": ["metadata"],
+            "agent_execution": [{"agent": "metadata", "status": "FAILED", "wave": 1}]
+        })
+        
+    response = client.get(f"/warehouses/{wh.id}/history?status=COMPLETED&page=2&page_size=5", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert len(data["items"]) == 3
+    assert data["total"] == 8
+    assert data["page"] == 2
+    assert data["page_size"] == 5
+    assert all(item["status"] == "COMPLETED" for item in data["items"])

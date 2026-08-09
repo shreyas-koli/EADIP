@@ -15,7 +15,7 @@ class AgentExecutionResponse(BaseModel):
     agent_name: str
     status: str
     started_at: datetime
-    finished_at: datetime
+    finished_at: Optional[datetime] = None
     duration_ms: Optional[float] = None
     wave: int
     error: Optional[str] = None
@@ -29,10 +29,32 @@ class DiscoverySessionResponse(BaseModel):
     session_id: str
     warehouse_id: int
     started_at: datetime
-    finished_at: datetime
+    finished_at: Optional[datetime] = None
     status: str
     total_duration_ms: Optional[float] = None
-    agent_executions: List[AgentExecutionResponse] = []
+    agent_executions: List[AgentExecutionResponse] = Field(default_factory=list)
     recommendations: Optional[Dict[str, Any]] = None
     
     model_config = ConfigDict(from_attributes=True)
+
+class DiscoveryHistoryResponse(BaseModel):
+    """
+    Schema representing the high-level execution history of a discovery session.
+    """
+    session_id: str
+    warehouse_id: int
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    status: str
+    total_duration_ms: Optional[float] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class DiscoveryHistoryPaginatedResponse(BaseModel):
+    """
+    Schema representing a paginated list of high-level execution history.
+    """
+    items: List[DiscoveryHistoryResponse]
+    total: int
+    page: int
+    page_size: int

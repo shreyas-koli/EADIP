@@ -141,3 +141,54 @@ class ExecutionService:
         except Exception:
             db.rollback()
             raise
+
+    @staticmethod
+    def get_history(
+        db: Session,
+        warehouse_id: int,
+        page: int = 1,
+        page_size: int = 10,
+        status: str | None = None
+    ) -> dict:
+        """
+        Retrieve discovery history for a given warehouse with pagination.
+        Returns a dict containing items, total, page, and page_size.
+        """
+        query = db.query(DiscoverySession).filter(DiscoverySession.warehouse_id == warehouse_id)
+        
+        if status:
+            query = query.filter(DiscoverySession.status == status)
+            
+        total = query.count()
+        
+        offset = (page - 1) * page_size
+        items = query.order_by(DiscoverySession.started_at.desc()).offset(offset).limit(page_size).all()
+        
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size
+        }
+
+    @staticmethod
+    def get_execution(
+        db: Session,
+        warehouse_id: int,
+        session_id: str
+    ) -> DiscoverySession | None:
+        """
+        Retrieve a single discovery session with its agent executions
+        for a given warehouse.
+        """
+        from sqlalchemy.orm import selectinload
+
+        return (
+            db.query(DiscoverySession)
+            .options(selectinload(DiscoverySession.agent_executions))
+            .filter(
+                DiscoverySession.warehouse_id == warehouse_id,
+                DiscoverySession.session_id == session_id
+            )
+            .first()
+        )
