@@ -8,6 +8,9 @@ Run directly with ``python -m app.database.init_db`` or call
 
 from app.database.base import Base
 from app.database.connection import engine
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── Import every ORM model so Base.metadata is fully populated ───
 from app.models.user import User  # noqa: F401
@@ -27,7 +30,7 @@ def init_db() -> None:
     repeatedly without duplicating tables.
     """
     Base.metadata.create_all(bind=engine)
-    print("✅  Database tables created successfully.")
+    logger.info("✅  Database tables created successfully.")
 
 
 # ── Allow direct execution ───────────────────────────────────────

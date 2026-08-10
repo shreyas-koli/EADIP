@@ -35,6 +35,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.context.shared_context import AgentStatus, SharedContext
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ── Agent task descriptor ────────────────────────────────────────
@@ -383,6 +386,7 @@ class AgentOrchestrator:
             status = AgentStatus.FAILED
             error_msg = str(exc)
             tb_str = traceback.format_exc()
+            logger.error(f"Agent '{task.name}' failed: {error_msg}")
         finally:
             end_ns = time.perf_counter_ns()
             end_iso = datetime.now(timezone.utc).isoformat()

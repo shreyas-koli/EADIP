@@ -4,6 +4,9 @@ from typing import Any, Dict
 from sqlalchemy.orm import Session
 
 from app.models.execution import AgentExecution, DiscoverySession
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionService:
@@ -135,11 +138,14 @@ class ExecutionService:
                 db.add(a_exec)
 
             db.commit()
+            logger.info(f"Successfully persisted discovery session {session_id} with {len(agent_executions)} agent executions.")
             db.refresh(discovery_session)
+            
             return discovery_session
 
-        except Exception:
+        except Exception as exc:
             db.rollback()
+            logger.error(f"Failed to persist execution summary for session {session_id}: {str(exc)}")
             raise
 
     @staticmethod

@@ -7,7 +7,7 @@ mapping, status codes, and error translation.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 from app.auth.jwt import create_access_token
 from app.auth.service import authenticate_user, get_current_user, register_user
@@ -21,7 +21,7 @@ router = APIRouter(
 )
 
 # ── OAuth2 scheme (reads the Bearer token from the header) ───────
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 
 # ── POST /auth/register ─────────────────────────────────────────
@@ -69,6 +69,39 @@ def login(credentials: UserLogin, db: DBSession):
     - Returns **401** if the credentials are invalid.
     """
     user = authenticate_user(db, credentials.email, credentials.password)
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = create_access_token(data={"sub": user.email})
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
+
+
+# ── POST /auth/token ─────────────────────────────────────────────
+
+
+@router.post(
+    "/token",
+    summary="Obtain an access token (OAuth2 compatible)",
+    include_in_schema=False,
+)
+def login_for_access_token(
+    db: DBSession,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+):
+    """
+    OAuth2 compatible token login, required for Swagger UI.
+    Maps the form's `username` field to the `email` field.
+    """
+    user = authenticate_user(db, form_data.username, form_data.password)
 
     if user is None:
         raise HTTPException(

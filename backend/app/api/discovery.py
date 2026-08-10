@@ -8,6 +8,9 @@ from app.services.execution_service import ExecutionService
 from app.warehouse.service import get_warehouse_by_id
 from app.api.auth import oauth2_scheme
 from app.auth.service import get_current_user
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/discovery",
@@ -68,6 +71,8 @@ def execute_discovery(
     tasks = factory.build_metadata_discovery(warehouse, context)
     orchestrator = AgentOrchestrator(context=context)
     
+    logger.info(f"Starting discovery session for warehouse '{warehouse.name}' ({warehouse.id}) with {len(tasks)} tasks.")
+    
     try:
         summary = orchestrator.execute_parallel(tasks)
     except ValueError as exc:
@@ -83,6 +88,7 @@ def execute_discovery(
 
     # 7. Persist execution
     try:
+        logger.info(f"Discovery execution completed. Persisting summary for warehouse '{warehouse.name}' ({warehouse.id}).")
         session_obj = ExecutionService.persist_execution(db, warehouse.id, summary)
     except ValueError as exc:
         raise HTTPException(

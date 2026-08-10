@@ -87,6 +87,10 @@ def test_openapi_schema():
     assert "security" in history_get, "GET history missing security requirements"
     assert "security" in detail_get, "GET detail missing security requirements"
     
+    security_schemes = schema.get("components", {}).get("securitySchemes", {})
+    assert "OAuth2PasswordBearer" in security_schemes
+    assert security_schemes["OAuth2PasswordBearer"]["flows"]["password"]["tokenUrl"] == "/auth/token"
+    
     # 9. HTTP Responses
     assert "401" in history_responses or "422" in history_responses, "Should document standard error codes"
     assert "404" in detail_responses or "422" in detail_responses, "Should document standard error codes"

@@ -22,7 +22,13 @@ from app.core.config import settings
 async def lifespan(app: FastAPI):
     """Execute logic on application startup and shutdown."""
     # ── Startup ──────────────────────────────────────────────────
-    print("🚀  EADIP Backend Started Successfully")
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("🚀  EADIP Backend Started Successfully")
     yield
     # ── Shutdown (add cleanup logic here if needed) ──────────────
 

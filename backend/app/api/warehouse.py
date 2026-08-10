@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, status as http_status, Depends, Qu
 from app.api.auth import oauth2_scheme
 from app.auth.service import get_current_user
 from app.services.execution_service import ExecutionService
-from app.schemas.execution import DiscoveryHistoryPaginatedResponse, DiscoveryHistoryResponse, DiscoverySessionResponse
+from app.schemas.execution import DiscoveryHistoryPaginatedResponse, DiscoverySessionResponse
 
 from app.database.session import DBSession
 from app.orchestrator.agent_orchestrator import AgentOrchestrator
@@ -43,7 +43,7 @@ router = APIRouter(
     status_code=http_status.HTTP_201_CREATED,
     summary="Register a new warehouse",
 )
-def create(warehouse_data: WarehouseCreate, db: DBSession):
+def create(warehouse_data: WarehouseCreate, db: DBSession, token: str = Depends(oauth2_scheme)):
     """
     Register a new data-warehouse connection.
 
@@ -52,6 +52,14 @@ def create(warehouse_data: WarehouseCreate, db: DBSession):
     - Returns **201** with the created warehouse on success.
     - Returns **400** if the name is already taken.
     """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
         warehouse = create_warehouse(db, warehouse_data)
     except ValueError as exc:
@@ -71,10 +79,17 @@ def create(warehouse_data: WarehouseCreate, db: DBSession):
     response_model=list[WarehouseResponse],
     summary="List all active warehouses",
 )
-def list_warehouses(db: DBSession):
+def list_warehouses(db: DBSession, token: str = Depends(oauth2_scheme)):
     """
     Return every active warehouse connection.
     """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return get_all_warehouses(db)
 
 
@@ -86,12 +101,20 @@ def list_warehouses(db: DBSession):
     response_model=WarehouseResponse,
     summary="Get warehouse by ID",
 )
-def get_warehouse(warehouse_id: int, db: DBSession):
+def get_warehouse(warehouse_id: int, db: DBSession, token: str = Depends(oauth2_scheme)):
     """
     Return a single warehouse by its primary key.
 
     Returns **404** if the warehouse does not exist.
     """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     warehouse = get_warehouse_by_id(db, warehouse_id)
 
     if warehouse is None:
@@ -111,13 +134,21 @@ def get_warehouse(warehouse_id: int, db: DBSession):
     response_model=WarehouseResponse,
     summary="Update a warehouse",
 )
-def update(warehouse_id: int, warehouse_data: WarehouseUpdate, db: DBSession):
+def update(warehouse_id: int, warehouse_data: WarehouseUpdate, db: DBSession, token: str = Depends(oauth2_scheme)):
     """
     Partially update an existing warehouse connection.
 
     Only the supplied fields are modified; all others remain
     unchanged.  Returns **404** if the warehouse does not exist.
     """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     warehouse = update_warehouse(db, warehouse_id, warehouse_data)
 
     if warehouse is None:
@@ -137,17 +168,25 @@ def update(warehouse_id: int, warehouse_data: WarehouseUpdate, db: DBSession):
     response_model=WarehouseResponse,
     summary="Soft-delete a warehouse",
 )
-def delete(warehouse_id: int, db: DBSession):
+def delete(warehouse_id: int, db: DBSession, token: str = Depends(oauth2_scheme)):
     """
     Deactivate a warehouse (soft-delete via ``is_active = False``).
 
     Returns **404** if the warehouse does not exist.
     """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     warehouse = delete_warehouse(db, warehouse_id)
 
     if warehouse is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"Warehouse with id {warehouse_id} not found.",
         )
 
@@ -161,7 +200,7 @@ def delete(warehouse_id: int, db: DBSession):
     "/{warehouse_id}/test",
     summary="Test warehouse connectivity",
 )
-def test_connection(warehouse_id: int, db: DBSession):
+def test_connection(warehouse_id: int, db: DBSession, token: str = Depends(oauth2_scheme)):
     """
     Execute a lightweight ``SELECT 1`` against the warehouse to
     verify that the connection parameters are valid and the
@@ -169,6 +208,14 @@ def test_connection(warehouse_id: int, db: DBSession):
 
     Returns **404** if the warehouse does not exist.
     """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     warehouse = get_warehouse_by_id(db, warehouse_id)
 
     if warehouse is None:
