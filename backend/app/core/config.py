@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # ── Security / Encryption ────────────────────────────────────
+    ENCRYPTION_KEY: str
+
     # ── Database ─────────────────────────────────────────────────
     DEBUG: bool = True
     DATABASE_URL: str

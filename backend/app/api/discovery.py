@@ -42,7 +42,7 @@ def execute_discovery(
         )
 
     # 3. Validate warehouse exists
-    warehouse = get_warehouse_by_id(db, request.warehouse_id)
+    warehouse = get_warehouse_by_id(db, request.warehouse_id, user)
     if warehouse is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

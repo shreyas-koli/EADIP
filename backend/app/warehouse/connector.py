@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, URL
 
 from app.models.warehouse import Warehouse
+from app.core.security import decrypt_credential
 
 # ── Supported database drivers ───────────────────────────────────
 # Maps the user-facing ``db_type`` value (lowercased) to the
@@ -62,11 +63,16 @@ class WarehouseConnector:
                 f"Unsupported database type: '{warehouse.db_type}'. "
                 f"Supported types: {', '.join(_DRIVER_MAP.keys())}."
             )
+            
+        try:
+            plaintext_password = decrypt_credential(warehouse.encrypted_password)
+        except ValueError as e:
+            raise ConnectionError("Failed to decrypt warehouse credentials.") from e
 
         url = URL.create(
             drivername=driver,
             username=warehouse.username,
-            password=warehouse.encrypted_password,
+            password=plaintext_password,
             host=warehouse.host,
             port=warehouse.port,
             database=warehouse.database_name,

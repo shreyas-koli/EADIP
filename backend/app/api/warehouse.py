@@ -61,7 +61,7 @@ def create(warehouse_data: WarehouseCreate, db: DBSession, token: str = Depends(
         )
 
     try:
-        warehouse = create_warehouse(db, warehouse_data)
+        warehouse = create_warehouse(db, warehouse_data, user)
     except ValueError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -90,7 +90,7 @@ def list_warehouses(db: DBSession, token: str = Depends(oauth2_scheme)):
             detail="Invalid or expired token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return get_all_warehouses(db)
+    return get_all_warehouses(db, user)
 
 
 # ── GET /{id} ────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ def get_warehouse(warehouse_id: int, db: DBSession, token: str = Depends(oauth2_
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    warehouse = get_warehouse_by_id(db, warehouse_id)
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
 
     if warehouse is None:
         raise HTTPException(
@@ -149,7 +149,7 @@ def update(warehouse_id: int, warehouse_data: WarehouseUpdate, db: DBSession, to
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    warehouse = update_warehouse(db, warehouse_id, warehouse_data)
+    warehouse = update_warehouse(db, warehouse_id, warehouse_data, user)
 
     if warehouse is None:
         raise HTTPException(
@@ -182,7 +182,7 @@ def delete(warehouse_id: int, db: DBSession, token: str = Depends(oauth2_scheme)
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    warehouse = delete_warehouse(db, warehouse_id)
+    warehouse = delete_warehouse(db, warehouse_id, user)
 
     if warehouse is None:
         raise HTTPException(
@@ -216,7 +216,7 @@ def test_connection(warehouse_id: int, db: DBSession, token: str = Depends(oauth
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    warehouse = get_warehouse_by_id(db, warehouse_id)
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
 
     if warehouse is None:
         raise HTTPException(
@@ -260,7 +260,7 @@ def get_warehouse_history(
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    warehouse = get_warehouse_by_id(db, warehouse_id)
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
     if warehouse is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
@@ -290,7 +290,7 @@ def get_warehouse_execution(warehouse_id: int, session_id: str, db: DBSession, t
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    warehouse = get_warehouse_by_id(db, warehouse_id)
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
     if warehouse is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,

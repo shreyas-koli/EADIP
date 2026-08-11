@@ -7,6 +7,8 @@ than calling hashing primitives directly.
 """
 
 from passlib.context import CryptContext
+from cryptography.fernet import Fernet, InvalidToken
+from app.core.config import settings
 
 # ── Hashing configuration ────────────────────────────────────────
 # • schemes        – bcrypt is the primary (and only) algorithm.
@@ -62,3 +64,28 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             grant_access(user)
     """
     return _pwd_context.verify(plain_password, hashed_password)
+
+
+def encrypt_credential(plaintext: str) -> str:
+    """
+    Encrypt a plaintext credential using Fernet symmetric encryption.
+    """
+    if not plaintext:
+        raise ValueError("Credential cannot be empty")
+        
+    f = Fernet(settings.ENCRYPTION_KEY)
+    return f.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_credential(ciphertext: str) -> str:
+    """
+    Decrypt a Fernet-encrypted credential back to plaintext.
+    """
+    if not ciphertext:
+        raise ValueError("Ciphertext cannot be empty")
+        
+    f = Fernet(settings.ENCRYPTION_KEY)
+    try:
+        return f.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    except InvalidToken:
+        raise ValueError("Invalid credential ciphertext")

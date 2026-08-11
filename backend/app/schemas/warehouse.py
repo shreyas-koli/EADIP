@@ -166,6 +166,11 @@ class WarehouseResponse(BaseModel):
         description="Auto-generated primary key.",
     )
 
+    owner_id: Optional[int] = Field(
+        default=None,
+        description="ID of the user who owns this warehouse.",
+    )
+
     name: str = Field(
         ...,
         description="Unique warehouse label.",

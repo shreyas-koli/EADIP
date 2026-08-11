@@ -12,6 +12,7 @@ from app.database.session import get_db
 from app.models.warehouse import Warehouse
 from app.models.execution import DiscoverySession, AgentExecution
 from app.auth.jwt import create_access_token
+from app.core.security import encrypt_credential
 
 client = TestClient(app)
 
@@ -52,8 +53,9 @@ def e2e_session(tmp_path):
         port=5432,
         database_name="test_db",
         username="test_user",
-        encrypted_password="encrypted",
-        is_active=True
+        encrypted_password=encrypt_credential("encrypted"),
+        is_active=True,
+        owner=test_user
     )
     session.add(wh)
     session.commit()

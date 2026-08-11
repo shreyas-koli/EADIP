@@ -11,6 +11,7 @@ from app.database.session import get_db
 from app.models.warehouse import Warehouse
 from app.models.execution import DiscoverySession
 from app.auth.jwt import create_access_token
+from app.core.security import encrypt_credential
 
 from sqlalchemy.pool import StaticPool
 
@@ -51,8 +52,9 @@ def db_session():
         port=5432,
         database_name="test_db",
         username="test_user",
-        encrypted_password="encrypted",
-        is_active=True
+        encrypted_password=encrypt_credential("encrypted"),
+        is_active=True,
+        owner=test_user
     )
     session.add(wh)
     
@@ -63,8 +65,9 @@ def db_session():
         port=5432,
         database_name="test_db",
         username="test_user",
-        encrypted_password="encrypted",
-        is_active=False
+        encrypted_password=encrypt_credential("encrypted"),
+        is_active=False,
+        owner=test_user
     )
     session.add(wh_inactive)
     
@@ -418,7 +421,7 @@ def test_cross_warehouse_isolation(db_session):
         port=5432,
         database_name="test_db2",
         username="test_user",
-        encrypted_password="encrypted",
+        encrypted_password=encrypt_credential("encrypted"),
         is_active=True
     )
     session.add(wh2)
@@ -465,7 +468,7 @@ def test_history_isolation(db_session):
         port=5432,
         database_name="test_db2",
         username="test_user",
-        encrypted_password="encrypted",
+        encrypted_password=encrypt_credential("encrypted"),
         is_active=True
     )
     session.add(wh2)

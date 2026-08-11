@@ -9,8 +9,8 @@ the EADIP platform can inspect and analyse.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, DateTime, Integer, String, func, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
@@ -57,6 +57,13 @@ class Warehouse(Base):
         String(500),
         nullable=True,
     )
+
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True, # Nullable temporarily for migration
+    )
+    owner: Mapped["User"] = relationship("User", back_populates="warehouses")
 
     # ── Connection details ───────────────────────────────────────
     db_type: Mapped[str] = mapped_column(

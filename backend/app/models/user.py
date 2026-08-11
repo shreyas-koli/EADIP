@@ -6,9 +6,10 @@ role-based access control, and audit timestamps.
 """
 
 from datetime import datetime
+from typing import List
 
 from sqlalchemy import Boolean, DateTime, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
@@ -83,6 +84,8 @@ class User(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    warehouses: Mapped[List["Warehouse"]] = relationship("Warehouse", back_populates="owner")
 
     # ── Representation ───────────────────────────────────────────
     def __repr__(self) -> str:
