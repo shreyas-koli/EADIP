@@ -8,6 +8,7 @@ top-level health / info endpoints.
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.warehouse import router as warehouse_router
@@ -42,6 +43,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── Middleware ───────────────────────────────────────────────────
+
+# Configure CORS for frontend communication
+if settings.BACKEND_CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.BACKEND_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "Accept"],
+    )
 
 # ── Routers ──────────────────────────────────────────────────────
 

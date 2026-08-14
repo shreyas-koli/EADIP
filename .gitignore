@@ -1,3 +1,5 @@
 .env
 .env.*
 !.env.example
+
+eadip_backup.json
