@@ -389,7 +389,7 @@ def test_get_execution_detail(db_session):
         "session_id": session_id,
         "completed": ["metadata"],
         "agent_execution": [{"agent": "metadata", "wave": 1, "duration_ms": 100.0}],
-        "agent_results": {"recommendation": {"rec1": "val1"}}
+        "agent_results": {"recommendation": {"recommendations": [{"rec1": "val1"}]}}
     })
     
     response = client.get(f"/warehouses/{wh.id}/history/{session_id}", headers=headers)
@@ -398,7 +398,8 @@ def test_get_execution_detail(db_session):
     assert data["session_id"] == session_id
     assert len(data["agent_executions"]) == 1
     assert data["agent_executions"][0]["agent_name"] == "metadata"
-    assert data["recommendations"] == {"rec1": "val1"}
+    assert data["recommendations"]["recommendations"][0]["rec1"] == "val1"
+    assert "presentation" in data["recommendations"]
 
 def test_get_history_invalid_warehouse(db_session):
     session, wh, _, headers = db_session
@@ -525,7 +526,7 @@ def test_detail_response_contract(db_session):
         "session_id": "api_test_detail_contract",
         "completed": ["metadata"],
         "agent_execution": [{"agent": "metadata", "wave": 1, "duration_ms": 100.0, "status": "COMPLETED"}],
-        "agent_results": {"recommendation": {"rec1": "val1"}}
+        "agent_results": {"recommendation": {"recommendations": [{"rec1": "val1"}]}}
     })
     
     response = client.get(f"/warehouses/{wh.id}/history/api_test_detail_contract", headers=headers)
@@ -542,7 +543,8 @@ def test_detail_response_contract(db_session):
     assert set(agent_exec.keys()) == agent_allowed_keys
     
     # Ensure recommendations are returned unchanged
-    assert data["recommendations"] == {"rec1": "val1"}
+    assert data["recommendations"]["recommendations"][0]["rec1"] == "val1"
+    assert "presentation" in data["recommendations"]
 
 def test_null_field_handling(db_session):
     session, wh, _, headers = db_session

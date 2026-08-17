@@ -80,6 +80,11 @@ class ExecutionService:
         agent_results = execution_summary.get("agent_results", {})
         recommendations = agent_results.get("recommendation")
 
+        if recommendations:
+            from app.recommendation.formatter import RecommendationFormatter
+            formatter = RecommendationFormatter()
+            recommendations = formatter.format(recommendations)
+
         # Create session
         discovery_session = DiscoverySession(
             session_id=session_id,

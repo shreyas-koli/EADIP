@@ -373,7 +373,7 @@ def test_get_execution_detail(db_session: Session):
             }
         ],
         "agent_results": {
-            "recommendation": {"key": "value"}
+            "recommendation": {"recommendations": [{"key": "value"}]}
         }
     }
     
@@ -391,7 +391,7 @@ def test_get_execution_detail(db_session: Session):
     assert session.agent_executions[0].duration_ms == 100.0
     
     # JSONB recommendation retrieved
-    assert session.recommendations == {"key": "value"}
+    assert session.recommendations["recommendations"][0]["key"] == "value"
 
 def test_get_execution_cross_warehouse_isolation(db_session: Session):
     # Setup a second warehouse
