@@ -7,9 +7,11 @@ import { AgentExecutionCard } from "./agent-execution-card"
 interface DiscoveryPipelineProps {
   executions?: AgentExecution[]
   isRunning: boolean
+  events?: Record<string, unknown>[]
+  isInitializing?: boolean
 }
 
-export function DiscoveryPipeline({ executions = [], isRunning }: DiscoveryPipelineProps) {
+export function DiscoveryPipeline({ executions = [], isRunning, events = [], isInitializing = false }: DiscoveryPipelineProps) {
   // Helper to find an execution by partial name
   const getExecution = (nameStr: string) => 
     executions.find(e => e.agent_name.toLowerCase().includes(nameStr.toLowerCase()))
@@ -22,11 +24,15 @@ export function DiscoveryPipeline({ executions = [], isRunning }: DiscoveryPipel
           name="Metadata Agent" 
           execution={getExecution("metadata")}
           isActive={isRunning} 
+          events={events}
+          isInitializing={isInitializing}
         />
         <AgentExecutionCard 
           name="Statistics Agent" 
           execution={getExecution("statistic")}
           isActive={isRunning} 
+          events={events}
+          isInitializing={isInitializing}
         />
       </div>
 
@@ -44,11 +50,15 @@ export function DiscoveryPipeline({ executions = [], isRunning }: DiscoveryPipel
           name="Security Agent" 
           execution={getExecution("security")}
           isActive={isRunning} 
+          events={events}
+          isInitializing={isInitializing}
         />
         <AgentExecutionCard 
           name="Data Quality Agent" 
           execution={getExecution("data")}
           isActive={isRunning} 
+          events={events}
+          isInitializing={isInitializing}
         />
       </div>
 
@@ -64,6 +74,8 @@ export function DiscoveryPipeline({ executions = [], isRunning }: DiscoveryPipel
           name="Recommendation Agent" 
           execution={getExecution("recommendation")}
           isActive={isRunning} 
+          events={events}
+          isInitializing={isInitializing}
         />
       </div>
     </div>

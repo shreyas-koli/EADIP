@@ -148,7 +148,12 @@ class MetadataInspector:
 
     # ── Full database inspection ─────────────────────────────────
 
-    def inspect_database(self, warehouse: Warehouse, include_system_schemas: bool = False) -> dict[str, Any]:
+    def inspect_database(
+        self, 
+        warehouse: Warehouse, 
+        include_system_schemas: bool = False,
+        progress_callback: Any = None
+    ) -> dict[str, Any]:
         """
         Return a complete metadata snapshot of the warehouse.
 
@@ -195,21 +200,29 @@ class MetadataInspector:
         """
         insp, engine = self._get_inspector(warehouse)
         try:
+            if progress_callback: progress_callback("Inspecting schemas...")
             result: dict[str, Any] = {"schemas": {}}
-
-            for schema_name in insp.get_schema_names():
+            
+            schema_names = insp.get_schema_names()
+            for schema_name in schema_names:
                 if not include_system_schemas and _is_system_schema(schema_name):
                     continue
 
                 tables: dict[str, Any] = {}
 
-                for table_name in insp.get_table_names(schema=schema_name):
+                if progress_callback: progress_callback("Reading table definitions...")
+                table_names = insp.get_table_names(schema=schema_name)
+                
+                for table_name in table_names:
+                    if progress_callback: progress_callback("Inspecting primary/foreign keys...")
                     pk_constraint = insp.get_pk_constraint(
                         table_name, schema=schema_name
                     )
                     pk_columns: set[str] = set(
                         pk_constraint.get("constrained_columns", [])
                     )
+                    
+                    if progress_callback: progress_callback("Inspecting columns...")
                     columns = [
                         {
                             "name":        col["name"],

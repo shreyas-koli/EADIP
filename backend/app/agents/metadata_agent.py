@@ -70,6 +70,14 @@ class MetadataAgent:
                     }
                 }
         """
-        result = self._inspector.inspect_database(warehouse)
+        context.emit_agent_progress("metadata", "Connecting to warehouse...")
+        
+        def _progress(msg: str) -> None:
+            context.emit_agent_progress("metadata", msg)
+            
+        result = self._inspector.inspect_database(warehouse, progress_callback=_progress)
+        
+        context.emit_agent_progress("metadata", "Building metadata summary...")
+        context.emit_agent_progress("metadata", "Metadata analysis completed.")
         context.set_agent_result("metadata", result)
         return result

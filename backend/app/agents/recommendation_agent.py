@@ -46,7 +46,15 @@ class RecommendationAgent:
         dict[str, Any]
             The generated recommendations snapshot.
         """
+        context.emit_agent_progress("recommendation", "Collecting findings from upstream agents...")
+        context.emit_agent_progress("recommendation", "Grouping related findings...")
+        context.emit_agent_progress("recommendation", "Prioritizing recommendations...")
+        context.emit_agent_progress("recommendation", "Calculating impact/effort/confidence...")
+        context.emit_agent_progress("recommendation", "Building final recommendations...")
+        
         recommendations = self._engine.analyse(warehouse, context)
+        
+        context.emit_agent_progress("recommendation", "Recommendation analysis completed.")
         
         context.set_agent_result(
             "recommendation",

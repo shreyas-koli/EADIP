@@ -39,7 +39,15 @@ class DataQualityAgent:
         dict[str, Any]
             The generated quality result containing scores and issues.
         """
+        context.emit_agent_progress("data_quality", "Inspecting nullable columns...")
+        context.emit_agent_progress("data_quality", "Checking datatype consistency...")
+        context.emit_agent_progress("data_quality", "Inspecting duplicate patterns...")
+        context.emit_agent_progress("data_quality", "Checking schema quality...")
+        context.emit_agent_progress("data_quality", "Generating data-quality findings...")
+        
         quality_result = self._analyzer.analyse(warehouse, context)
+        
+        context.emit_agent_progress("data_quality", "Data-quality analysis completed.")
 
         context.set_agent_result(
             "data_quality",

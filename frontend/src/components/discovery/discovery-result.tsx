@@ -54,15 +54,6 @@ export function DiscoveryResult({ session, warehouseName }: DiscoveryResultProps
     }
   }
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority.toUpperCase()) {
-      case "HIGH": return "border-red-500/50 bg-red-500/10 text-red-400"
-      case "MEDIUM": return "border-amber-500/50 bg-amber-500/10 text-amber-400"
-      case "LOW": return "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
-      default: return "border-slate-500/50 bg-slate-500/10 text-slate-400"
-    }
-  }
-
   return (
     <div className="space-y-6 pb-12">
       <Card className="bg-slate-900 border-emerald-500/30">
@@ -153,78 +144,91 @@ export function DiscoveryResult({ session, warehouseName }: DiscoveryResultProps
 
               {/* Priority Actions */}
               {presentation.priority_actions && presentation.priority_actions.length > 0 && (
-                <div className="space-y-4 pt-2">
-                  <h4 className="text-sm font-semibold text-slate-200">Priority Actions</h4>
-                  <div className="space-y-4">
-                    {presentation.priority_actions.map((action: PriorityAction, idx: number) => (
-                      <div key={idx} className={`rounded-xl border p-5 bg-slate-900/80 shadow-lg ${
-                        action.priority === "HIGH" ? "border-red-900/50" :
-                        action.priority === "MEDIUM" ? "border-amber-900/50" :
-                        "border-slate-800"
-                      }`}>
+                <div className="space-y-10 pt-6">
+                  <h4 className="text-xl font-bold text-slate-200 border-b border-slate-800 pb-2">Priority Actions</h4>
+                  
+                  {['HIGH', 'MEDIUM', 'LOW'].map((prioLevel) => {
+                    const filteredActions = presentation.priority_actions.filter((a: PriorityAction) => a.priority === prioLevel)
+                    if (filteredActions.length === 0) return null;
+                    
+                    return (
+                      <div key={prioLevel} className="space-y-4">
+                        <h5 className="text-sm font-semibold tracking-wider flex items-center space-x-2">
+                          {getPriorityIcon(prioLevel)}
+                          <span className={prioLevel === 'HIGH' ? 'text-red-400' : prioLevel === 'MEDIUM' ? 'text-amber-400' : 'text-emerald-400'}>
+                            {prioLevel} PRIORITY ({filteredActions.length})
+                          </span>
+                        </h5>
                         
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center space-x-3">
-                            {getPriorityIcon(action.priority)}
-                            <h5 className="text-base font-medium text-slate-200">{action.title}</h5>
-                          </div>
-                          <div className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getPriorityColor(action.priority)}`}>
-                            {action.priority}
-                          </div>
-                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                          {filteredActions.map((action: PriorityAction, idx: number) => (
+                            <div key={idx} className={`rounded-xl border p-5 flex flex-col bg-slate-900/80 shadow-lg ${
+                              action.priority === "HIGH" ? "border-red-900/50" :
+                              action.priority === "MEDIUM" ? "border-amber-900/50" :
+                              "border-slate-800"
+                            }`}>
+                              
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center space-x-3">
+                                  {getPriorityIcon(action.priority)}
+                                  <h5 className="text-base font-medium text-slate-200 leading-tight">{action.title}</h5>
+                                </div>
+                              </div>
 
-                        {action.location && (action.location.schema || action.location.table) && (
-                          <div className="flex items-center space-x-2 mb-4 text-sm font-mono bg-slate-950/50 px-3 py-1.5 rounded-md inline-flex border border-slate-800">
-                            <span className="text-slate-400">{action.location.schema || "public"}</span>
-                            <span className="text-slate-600">.</span>
-                            <span className="text-sky-400">{action.location.table}</span>
-                            {action.location.column && (
-                              <>
-                                <span className="text-slate-600">.</span>
-                                <span className="text-purple-400">{action.location.column}</span>
-                              </>
-                            )}
-                          </div>
-                        )}
+                              {action.location && (action.location.schema || action.location.table) && (
+                                <div className="flex items-center space-x-1 mb-4 text-xs font-mono bg-slate-950/50 px-2 py-1 rounded-md border border-slate-800 self-start">
+                                  <span className="text-slate-400">{action.location.schema || "public"}</span>
+                                  <span className="text-slate-600">.</span>
+                                  <span className="text-sky-400">{action.location.table}</span>
+                                  {action.location.column && (
+                                    <>
+                                      <span className="text-slate-600">.</span>
+                                      <span className="text-purple-400">{action.location.column}</span>
+                                    </>
+                                  )}
+                                </div>
+                              )}
 
-                        {/* 3 Column Content Area */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
-                          <div>
-                            <h6 className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Problem</h6>
-                            <p className="text-sm text-slate-300">{action.problem}</p>
-                          </div>
-                          <div>
-                            <h6 className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Why It Matters</h6>
-                            <p className="text-sm text-slate-300">{action.why_it_matters}</p>
-                          </div>
-                          <div className="bg-indigo-950/20 border border-indigo-900/30 p-3 rounded-lg h-full">
-                            <h6 className="text-xs text-indigo-400 uppercase tracking-wider font-semibold mb-1">Recommended Action</h6>
-                            <p className="text-sm text-indigo-200">{action.recommended_action}</p>
-                          </div>
-                        </div>
-                        
-                        {/* Compact Metadata Footer */}
-                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-3 border-t border-slate-800/80 mt-2">
-                          <div className="flex items-center">
-                            <span className="text-xs text-slate-500 mr-2">Impact:</span>
-                            <span className="text-xs font-medium text-slate-300 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700/50">{action.impact}</span>
-                          </div>
-                          <div className="flex items-center">
-                            <span className="text-xs text-slate-500 mr-2">Effort:</span>
-                            <span className="text-xs font-medium text-slate-300 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700/50">{action.effort}</span>
-                          </div>
-                          <div className="flex items-center">
-                            <span className="text-xs text-slate-500 mr-2">Confidence:</span>
-                            <span className="text-xs font-medium text-slate-300 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700/50">{action.confidence}%</span>
-                          </div>
-                          <div className="flex items-center ml-auto">
-                            <span className="text-xs text-slate-500 mr-2">Source:</span>
-                            <span className="text-xs text-slate-400">{action.source}</span>
-                          </div>
+                              <div className="flex-1 space-y-4 mb-5">
+                                <div>
+                                  <h6 className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1">Problem</h6>
+                                  <p className="text-sm text-slate-300">{action.problem}</p>
+                                </div>
+                                <div>
+                                  <h6 className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1">Why It Matters</h6>
+                                  <p className="text-sm text-slate-300">{action.why_it_matters}</p>
+                                </div>
+                                <div className="bg-indigo-950/20 border border-indigo-900/30 p-3 rounded-lg">
+                                  <h6 className="text-[10px] text-indigo-400/80 uppercase tracking-wider font-bold mb-1">Recommended Action</h6>
+                                  <p className="text-sm text-indigo-200">{action.recommended_action}</p>
+                                </div>
+                              </div>
+                              
+                              {/* Compact Metadata Footer */}
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3 border-t border-slate-800/80 mt-auto">
+                                <div className="flex items-center">
+                                  <span className="text-[10px] text-slate-500 mr-1.5 uppercase">Impact:</span>
+                                  <span className="text-xs font-medium text-slate-300">{action.impact}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="text-[10px] text-slate-500 mr-1.5 uppercase">Effort:</span>
+                                  <span className="text-xs font-medium text-slate-300">{action.effort}</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className="text-[10px] text-slate-500 mr-1.5 uppercase">Confidence:</span>
+                                  <span className="text-xs font-medium text-slate-300">{action.confidence}%</span>
+                                </div>
+                                <div className="flex items-center w-full mt-1">
+                                  <span className="text-[10px] text-slate-500 mr-1.5 uppercase">Source:</span>
+                                  <span className="text-xs text-slate-400 truncate">{action.source}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

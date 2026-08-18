@@ -24,7 +24,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 
 # ── Agent status enumeration ─────────────────────────────────────
@@ -81,16 +81,29 @@ class SharedContext:
         statistics = ctx.get_agent_result("statistics")
     """
 
-    def __init__(self) -> None:
+    def __init__(self, event_callback: Callable[[dict[str, Any]], None] | None = None) -> None:
         """Initialise the shared context store (non-singleton)."""
         self._rlock = threading.RLock()
-
+        
+        self._event_callback = event_callback
         self._session_id: str = str(uuid.uuid4())
         self._current_warehouse: dict[str, Any] | None = None
         self._agent_results: dict[str, Any] = {}
         self._execution_logs: list[dict[str, Any]] = []
         self._execution_history: list[dict[str, Any]] = []
         self._agent_status: dict[str, AgentStatus] = {}
+
+    def _emit(self, event_data: dict[str, Any]) -> None:
+        """Internal helper to emit an event if a callback is registered."""
+        if self._event_callback:
+            try:
+                # Add timestamp to all events
+                if "timestamp" not in event_data:
+                    event_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+                self._event_callback(event_data)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Event callback failed: {e}")
 
     # ── Session ID ───────────────────────────────────────────────
 
@@ -248,6 +261,20 @@ class SharedContext:
                 "message": message,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
+            self._emit({
+                "event": "agent_progress",
+                "message": message
+            })
+
+    def emit_agent_progress(self, agent: str, message: str) -> None:
+        """
+        Emit a progress update for a specific agent.
+        """
+        self._emit({
+            "event": "agent_progress",
+            "agent": agent,
+            "message": message
+        })
 
     def get_execution_logs(self) -> list[dict[str, Any]]:
         """
@@ -345,6 +372,22 @@ class SharedContext:
         """
         with self._rlock:
             self._agent_status[agent] = status
+            
+            event_type = None
+            if status == AgentStatus.RUNNING:
+                event_type = "agent_started"
+            elif status == AgentStatus.COMPLETED:
+                event_type = "agent_completed"
+            elif status == AgentStatus.FAILED:
+                event_type = "agent_failed"
+            elif status == AgentStatus.SKIPPED:
+                event_type = "agent_skipped"
+                
+            if event_type:
+                self._emit({
+                    "event": event_type,
+                    "agent": agent
+                })
 
     def get_agent_status(self, agent: str) -> AgentStatus | None:
         """

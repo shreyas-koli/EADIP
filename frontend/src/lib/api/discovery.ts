@@ -1,4 +1,4 @@
-import { fetchApi } from "./client"
+import { fetchApi, fetchStream } from "./client"
 
 export interface DiscoveryExecutionRequest {
   warehouse_id: number
@@ -49,6 +49,12 @@ export const discoveryApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  executeStream: (data: DiscoveryExecutionRequest, onMessage: (event: Record<string, unknown>) => void) =>
+    fetchStream("/discovery/execute?stream=true", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }, onMessage as (data: unknown) => void),
 
   getHistory: (warehouseId: number, page: number = 1, pageSize: number = 10, status?: string) => {
     let url = `/warehouses/${warehouseId}/history?page=${page}&page_size=${pageSize}`

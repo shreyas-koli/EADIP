@@ -9,6 +9,11 @@ from app.warehouse.service import get_warehouse_by_id
 from app.api.auth import oauth2_scheme
 from app.auth.service import get_current_user
 import logging
+from queue import Queue
+import threading
+import json
+from datetime import datetime, timezone
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,7 @@ router = APIRouter(
 def execute_discovery(
     request: DiscoveryExecutionRequest, 
     db: DBSession, 
+    stream: bool = False,
     token: str = Depends(oauth2_scheme)
 ):
     """
@@ -56,8 +62,15 @@ def execute_discovery(
             detail="Cannot execute discovery on an inactive warehouse.",
         )
 
-    # 5. Invoke AgentOrchestrator
-    context = SharedContext()
+    # 5. Determine context strategy
+    if not stream:
+        context = SharedContext()
+    else:
+        q: Queue = Queue()
+        def event_callback(event_data: dict):
+            q.put(event_data)
+        context = SharedContext(event_callback=event_callback)
+        
     context.set_current_warehouse({
         "id": warehouse.id,
         "name": warehouse.name,
@@ -73,33 +86,70 @@ def execute_discovery(
     
     logger.info(f"Starting discovery session for warehouse '{warehouse.name}' ({warehouse.id}) with {len(tasks)} tasks.")
     
-    try:
-        summary = orchestrator.execute_parallel(tasks)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal orchestration error",
-        )
+    if not stream:
+        try:
+            summary = orchestrator.execute_parallel(tasks)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal orchestration error",
+            )
 
-    # 7. Persist execution
-    try:
-        logger.info(f"Discovery execution completed. Persisting summary for warehouse '{warehouse.name}' ({warehouse.id}).")
-        session_obj = ExecutionService.persist_execution(db, warehouse.id, summary)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Persistence failed",
-        )
+        try:
+            logger.info(f"Discovery execution completed. Persisting summary for warehouse '{warehouse.name}' ({warehouse.id}).")
+            session_obj = ExecutionService.persist_execution(db, warehouse.id, summary)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Persistence failed",
+            )
+        return session_obj
 
-    # 8. Return response
-    return session_obj
+    # Stream execution
+    def run_orchestrator():
+        try:
+            # Tell client we started
+            q.put({
+                "event": "discovery_started", 
+                "warehouse_id": warehouse.id, 
+                "tasks": [t.name for t in tasks],
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+            
+            # Execute
+            summary = orchestrator.execute_parallel(tasks)
+            
+            # Persist (requires a new DB session since this is a new thread)
+            from app.database.session import SessionLocal
+            with SessionLocal() as thread_db:
+                session_obj = ExecutionService.persist_execution(thread_db, warehouse.id, summary)
+                # We need to serialize the pydantic model to jsonable dict
+                response_obj = DiscoverySessionResponse.model_validate(session_obj)
+                q.put({"event": "discovery_completed", "session": response_obj.model_dump(mode="json")})
+                
+        except Exception as exc:
+            logger.error(f"Background execution failed: {exc}")
+            q.put({"event": "error", "message": str(exc)})
+        finally:
+            q.put(None)  # Sentinel to end stream
+
+    threading.Thread(target=run_orchestrator, daemon=True).start()
+
+    def generate_events():
+        while True:
+            event = q.get()
+            if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(generate_events(), media_type="text/event-stream")
