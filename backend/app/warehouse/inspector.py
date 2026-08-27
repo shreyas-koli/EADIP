@@ -200,21 +200,25 @@ class MetadataInspector:
         """
         insp, engine = self._get_inspector(warehouse)
         try:
-            if progress_callback: progress_callback("Inspecting schemas...")
+            if progress_callback: progress_callback("Inspecting schemas...", 10)
             result: dict[str, Any] = {"schemas": {}}
             
-            schema_names = insp.get_schema_names()
-            for schema_name in schema_names:
-                if not include_system_schemas and _is_system_schema(schema_name):
-                    continue
+            all_schema_names = insp.get_schema_names()
+            schema_names = [s for s in all_schema_names if include_system_schemas or not _is_system_schema(s)]
+            total_schemas = len(schema_names)
+            
+            for schema_idx, schema_name in enumerate(schema_names):
+                base_pct = 10 + int((schema_idx / max(total_schemas, 1)) * 80)
 
                 tables: dict[str, Any] = {}
 
-                if progress_callback: progress_callback("Reading table definitions...")
+                if progress_callback: progress_callback(f"Reading table definitions for '{schema_name}'...", base_pct + 2)
                 table_names = insp.get_table_names(schema=schema_name)
+                total_tables = len(table_names)
                 
-                for table_name in table_names:
-                    if progress_callback: progress_callback("Inspecting primary/foreign keys...")
+                for table_idx, table_name in enumerate(table_names):
+                    table_pct = base_pct + 2 + int((table_idx / max(total_tables, 1)) * (80 / max(total_schemas, 1)))
+                    if progress_callback: progress_callback(f"Inspecting primary/foreign keys for '{table_name}'...", table_pct)
                     pk_constraint = insp.get_pk_constraint(
                         table_name, schema=schema_name
                     )
@@ -222,7 +226,7 @@ class MetadataInspector:
                         pk_constraint.get("constrained_columns", [])
                     )
                     
-                    if progress_callback: progress_callback("Inspecting columns...")
+                    if progress_callback: progress_callback(f"Inspecting columns for '{table_name}'...", table_pct + 1)
                     columns = [
                         {
                             "name":        col["name"],

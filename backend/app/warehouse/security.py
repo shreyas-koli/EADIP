@@ -127,7 +127,13 @@ class SecurityAnalyzer:
 
     # ── Public API ───────────────────────────────────────────────
 
-    def analyse(self, warehouse: Warehouse, context: SharedContext, include_system_schemas: bool = False) -> dict[str, Any]:
+    def analyse(
+        self, 
+        warehouse: Warehouse, 
+        context: SharedContext, 
+        include_system_schemas: bool = False,
+        progress_callback: Any = None
+    ) -> dict[str, Any]:
         """
         Run all security rules against the warehouse metadata and
         return a structured security report.
@@ -178,12 +184,23 @@ class SecurityAnalyzer:
 
         if metadata:
             schemas: dict[str, Any] = metadata.get("schemas", {})
-            for schema_name, schema_body in schemas.items():
-                if not include_system_schemas and _is_system_schema(schema_name):
-                    continue
-
+            schema_keys = [k for k in schemas.keys() if include_system_schemas or not _is_system_schema(k)]
+            total_schemas = len(schema_keys)
+            
+            for schema_idx, schema_name in enumerate(schema_keys):
+                schema_body = schemas[schema_name]
+                base_pct = int((schema_idx / max(total_schemas, 1)) * 90)
+                
                 tables: dict[str, Any] = schema_body.get("tables", {})
-                for table_name, table_body in tables.items():
+                table_keys = list(tables.keys())
+                total_tables = len(table_keys)
+                
+                for table_idx, table_name in enumerate(table_keys):
+                    table_body = tables[table_name]
+                    table_pct = base_pct + int((table_idx / max(total_tables, 1)) * (90 / max(total_schemas, 1)))
+                    
+                    if progress_callback: progress_callback(f"Checking rules on {schema_name}.{table_name}...", table_pct)
+                    
                     columns: list[dict[str, Any]] = table_body.get("columns", [])
                     issues.extend(
                         self._check_sensitive_columns(schema_name, table_name, columns)
@@ -201,6 +218,7 @@ class SecurityAnalyzer:
                         self._check_weak_column_names(schema_name, table_name, columns)
                     )
 
+        if progress_callback: progress_callback("Generating security findings...", 95)
         summary    = self._build_summary(metadata, issues)
         risk_score = self._calculate_risk_score(issues)
         risk_level = self._classify_risk(risk_score)

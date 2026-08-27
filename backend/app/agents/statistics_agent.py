@@ -71,15 +71,13 @@ class StatisticsAgent:
                     }
                 }
         """
-        context.emit_agent_progress("statistics", "Inspecting table statistics...")
-        context.emit_agent_progress("statistics", "Counting rows...")
-        context.emit_agent_progress("statistics", "Calculating table sizes...")
-        context.emit_agent_progress("statistics", "Analyzing column distributions...")
-        context.emit_agent_progress("statistics", "Detecting empty/small tables...")
-        context.emit_agent_progress("statistics", "Computing statistics...")
+        context.emit_agent_progress("statistics", "Inspecting table statistics...", 0)
         
-        statistics = self._analyzer.analyse(warehouse)
+        def _progress(msg: str, pct: int | None = None) -> None:
+            context.emit_agent_progress("statistics", msg, pct)
+            
+        statistics = self._analyzer.analyse(warehouse, progress_callback=_progress)
         
-        context.emit_agent_progress("statistics", "Statistics analysis completed.")
+        context.emit_agent_progress("statistics", "Statistics analysis completed.", 100)
         context.set_agent_result("statistics", statistics)
         return statistics

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Terminal, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Terminal, Clock, CheckCircle2, Loader2, Activity, Play, Pause, RotateCcw, XCircle } from "lucide-react"
 
 type AgentState = "WAITING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPED"
 
@@ -14,41 +14,89 @@ interface AgentData {
   error?: string
 }
 
+interface ReplayState {
+  isReplaying: boolean
+  isPlaying: boolean
+  currentIndex: number
+  speed: number
+  visibleEvents: Record<string, unknown>[]
+  totalEvents: number
+  isFinished: boolean
+}
+
+interface ReplayActions {
+  startReplay: () => void
+  pauseReplay: () => void
+  restartReplay: () => void
+  reset: () => void
+  changeSpeed: (speed: 0.5 | 1 | 2 | 5) => void
+}
+
 interface DiscoveryConsoleProps {
   warehouseName: string
   isComplete: boolean
+  actualSessionStatus?: string
+  actualDurationMs?: number
   events: Record<string, unknown>[]
-  totalDurationMs?: number
+  replayState?: ReplayState
+  replayActions?: ReplayActions
   isInitializing?: boolean
   initCountdown?: number
 }
 
-// Convert ISO string to timestamp
 const parseTime = (isoString?: string) => {
   return isoString ? new Date(isoString).getTime() : undefined
 }
 
-// Format duration
 const formatDuration = (ms: number) => {
-  const seconds = (ms / 1000).toFixed(2)
-  return `${seconds.padStart(5, '0')}s`
+  const seconds = (ms / 1000).toFixed(3)
+  return `${seconds.padStart(6, '0')}s`
 }
 
-export function DiscoveryConsole({ warehouseName, isComplete, events, totalDurationMs, isInitializing, initCountdown }: DiscoveryConsoleProps) {
-  const [now, setNow] = useState<number>(() => Date.now())
+const formatLogTime = (isoString?: string) => {
+  if (!isoString) return ""
+  const d = new Date(isoString)
+  if (isNaN(d.getTime())) return ""
   
-  // Update live timer
+  const hh = d.getHours().toString().padStart(2, '0')
+  const mm = d.getMinutes().toString().padStart(2, '0')
+  const ss = d.getSeconds().toString().padStart(2, '0')
+  const mmm = d.getMilliseconds().toString().padStart(3, '0')
+  return `${hh}:${mm}:${ss}.${mmm}`
+}
+
+export function DiscoveryConsole({ 
+  warehouseName, 
+  isComplete, 
+  actualSessionStatus,
+  actualDurationMs,
+  events, 
+  replayState,
+  replayActions,
+  isInitializing 
+}: DiscoveryConsoleProps) {
+  const [now, setNow] = useState<number>(() => Date.now())
+  const logContainerRef = useRef<HTMLDivElement>(null)
+  
   useEffect(() => {
-    if (isComplete) return
+    if (isComplete && !replayState?.isReplaying) return
     const interval = setInterval(() => setNow(Date.now()), 50)
     return () => clearInterval(interval)
-  }, [isComplete])
+  }, [isComplete, replayState?.isReplaying])
 
-  // Compute agents state directly during render
+  // Auto-scroll logic
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
+    }
+  }, [events.length, replayState?.currentIndex])
+
   const agents: Record<string, AgentData> = {}
   let globalStart: number | null = null
 
-  events.forEach(ev => {
+  const displayEvents = replayState?.isReplaying ? replayState.visibleEvents : events
+
+  displayEvents.forEach(ev => {
     const e = ev as Record<string, unknown>
     const eventType = e.event as string
     const agentName = e.agent as string
@@ -113,123 +161,219 @@ export function DiscoveryConsole({ warehouseName, isComplete, events, totalDurat
     if (a.status === "COMPLETED" || a.status === "FAILED" || a.status === "SKIPPED") completedCount++
   })
 
-  // Calculate total runtime
+  // Final Execution State Fix
+  if (isComplete && !replayState?.isReplaying) {
+    if (actualSessionStatus === "COMPLETED") {
+      activeCount = 0
+      completedCount = 6 // Hardcoded based on current architecture, or Object.keys(agents).length if dynamic
+    }
+  }
+
+  // Calculate runtimes
   const getGlobalRuntime = () => {
-    if (totalDurationMs) return formatDuration(totalDurationMs)
-    if (isInitializing) return `${(5 - (initCountdown || 0)).toFixed(2)}s`
+    if (actualDurationMs && (!replayState?.isReplaying || replayState.isFinished)) return formatDuration(actualDurationMs)
     if (!globalStart) return "00.00s"
-    if (isComplete) return "" // wait for totalDurationMs
+    if (isComplete && !replayState?.isReplaying) return "" 
     return formatDuration(now - globalStart)
   }
 
+  const getReplayDuration = () => {
+    if (!globalStart) return "0.000s";
+    const lastEvent = displayEvents[displayEvents.length - 1];
+    const ts = parseTime(lastEvent?.timestamp as string | undefined) || now;
+    return formatDuration(ts - globalStart);
+  }
+
+  // Status Badge Logic
+  const renderStatusBadge = () => {
+    if (replayState?.isReplaying) {
+      return <span className="text-purple-400 font-semibold flex items-center gap-2"><Play className="h-4 w-4" /> REPLAYING</span>
+    }
+    if (isComplete && actualSessionStatus === "FAILED") {
+      return <span className="text-red-400 font-semibold flex items-center gap-2"><XCircle className="h-4 w-4" /> FAILED</span>
+    }
+    if (isComplete) {
+      return <span className="text-emerald-400 font-semibold flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> COMPLETED</span>
+    }
+    if (isInitializing) {
+      return <span className="text-blue-400 font-semibold flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> INITIALIZING</span>
+    }
+    return <span className="text-blue-400 font-semibold flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> RUNNING</span>
+  }
+
+  let fastestAgent = ""
+  let slowestAgent = ""
+  let minDuration = Infinity
+  let maxDuration = -1
+
+  if (isComplete && !replayState?.isReplaying) {
+    Object.values(agents).forEach(a => {
+      if (a.durationMs && a.durationMs > 0) {
+        if (a.durationMs < minDuration) {
+          minDuration = a.durationMs
+          fastestAgent = a.name
+        }
+        if (a.durationMs > maxDuration) {
+          maxDuration = a.durationMs
+          slowestAgent = a.name
+        }
+      }
+    })
+  }
+
   return (
-    <div className="w-full bg-[#0a0a0a] border border-slate-800 rounded-lg overflow-hidden font-mono text-sm shadow-2xl">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-slate-900/50 border-b border-slate-800">
-        <div className="flex items-center space-x-3">
-          <Terminal className="h-4 w-4 text-emerald-500" />
-          <span className="text-slate-200 font-semibold tracking-wide">EADIP DISCOVERY ENGINE</span>
-          <span className="text-slate-500 text-xs px-2 py-0.5 rounded-full bg-slate-800/50">
-            Target: {warehouseName}
-          </span>
-        </div>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 text-slate-400">
-            <Clock className="h-4 w-4" />
-            <span className="w-16 text-right tabular-nums">{getGlobalRuntime()}</span>
+    <div className="w-full font-mono text-sm space-y-6">
+      {/* Execution Monitor Header */}
+      <div className="bg-[#0a0a0a] border border-slate-800 rounded-lg overflow-hidden shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-900/50 border-b border-slate-800">
+          <div className="flex items-center space-x-3">
+            <Terminal className="h-4 w-4 text-emerald-500" />
+            <span className="text-slate-200 font-semibold tracking-wide">EADIP DISCOVERY ENGINE</span>
+            <span className="text-slate-500 text-xs px-2 py-0.5 rounded-full bg-slate-800/50">
+              Target: {warehouseName}
+            </span>
           </div>
-          <div className="flex items-center space-x-2">
-            {isComplete ? (
-              <span className="text-emerald-400 font-semibold flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> COMPLETED</span>
-            ) : (
-              <span className="text-emerald-500 font-semibold flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> RUNNING</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Agents Body */}
-      <div className="p-4 space-y-4">
-        {isInitializing && (
-          <div className="text-blue-400 font-medium">
-            <span className="text-slate-500">[{new Date().toLocaleTimeString(undefined, { hour12: false })}]</span> Preparing multi-agent discovery... {initCountdown}s
-          </div>
-        )}
-        
-        {Object.values(agents).length === 0 && !isComplete && !isInitializing && (
-          <div className="text-slate-500 italic">Starting discovery execution...</div>
-        )}
-        
-        {Object.values(agents).map(agent => {
-          let duration = "WAITING"
-          if (agent.status === "COMPLETED" || agent.status === "FAILED") {
-            duration = agent.durationMs ? formatDuration(agent.durationMs) : "???"
-          } else if (agent.status === "RUNNING" && agent.startedAt) {
-            duration = formatDuration(now - agent.startedAt)
-          } else if (agent.status === "SKIPPED") {
-            duration = "SKIPPED"
-          }
-
-          return (
-            <div key={agent.name} className="flex flex-col space-y-1">
-              <div className="flex items-center justify-between group">
-                <div className="flex items-center space-x-3">
-                  {agent.status === "WAITING" && <span className="text-slate-600">○</span>}
-                  {agent.status === "RUNNING" && <Loader2 className="h-4 w-4 text-emerald-500 animate-spin" />}
-                  {agent.status === "COMPLETED" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                  {agent.status === "FAILED" && <XCircle className="h-4 w-4 text-red-500" />}
-                  {agent.status === "SKIPPED" && <span className="text-slate-500">-</span>}
-                  
-                  <span className={`font-medium ${
-                    agent.status === "WAITING" ? "text-slate-500" :
-                    agent.status === "FAILED" ? "text-red-400" :
-                    agent.status === "SKIPPED" ? "text-slate-500 line-through" :
-                    "text-slate-200"
-                  }`}>
-                    {agent.name.replace("_agent", "").split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Agent
-                  </span>
-                </div>
-                <div className={`tabular-nums w-16 text-right ${agent.status === "RUNNING" ? "text-emerald-400" : "text-slate-500"}`}>
-                  {duration}
-                </div>
-              </div>
-
-              {/* Live logs/activity tree */}
-              {agent.logs.length > 0 && agent.status === "RUNNING" && (
-                <div className="pl-7 space-y-0.5 text-slate-500 text-xs">
-                  {agent.logs.map((log, i) => (
-                    <div key={i} className="flex items-center space-x-2">
-                      <span className="text-slate-700">{i === agent.logs.length - 1 ? "└─" : "├─"}</span>
-                      <span className="truncate">{log}</span>
-                    </div>
-                  ))}
-                  {/* Fake a trailing ... for the active step */}
-                  <div className="flex items-center space-x-2">
-                    <span className="text-slate-700">└─</span>
-                    <span className="animate-pulse text-emerald-700">...</span>
-                  </div>
-                </div>
-              )}
-              
-              {agent.status === "FAILED" && agent.error && (
-                <div className="pl-7 text-red-400/80 text-xs mt-1">
-                  └─ Error: {agent.error}
-                </div>
-              )}
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 text-slate-400">
+              <Clock className="h-4 w-4" />
+              <span className="w-20 text-right tabular-nums text-slate-200 font-medium">{getGlobalRuntime()}</span>
             </div>
-          )
-        })}
+            <div className="flex items-center space-x-2">
+              {renderStatusBadge()}
+            </div>
+          </div>
+        </div>
+        <div className="px-4 py-3 flex items-center justify-between bg-slate-900/20 text-slate-400">
+          <div>Parallel: <span className="text-slate-200 font-medium">{activeCount} active</span></div>
+          <div>Completed: <span className="text-slate-200 font-medium">{completedCount} / 6</span></div>
+        </div>
       </div>
 
-      {/* Footer / Stats */}
-      <div className="px-4 py-2 bg-slate-900/50 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
-        <div>
-          Parallel execution: <span className="text-slate-200">{isInitializing ? 0 : activeCount}</span> agent{activeCount === 1 ? '' : 's'} active
+      {/* Execution Log */}
+      <div className="bg-[#0a0a0a] border border-slate-800 rounded-lg overflow-hidden shadow-xl flex flex-col">
+        <div className="px-4 py-2 bg-slate-900/50 border-b border-slate-800 text-slate-300 font-semibold flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-slate-500" /> {replayState?.isReplaying ? "Replay Execution Log" : "Live Execution Log"}
+          </div>
+          {replayState?.isReplaying && (
+            <div className="text-xs font-normal text-slate-400">
+              Playback Time: <span className="text-slate-200">{getReplayDuration()}</span>
+            </div>
+          )}
         </div>
-        <div>
-          Completed: <span className="text-slate-200">{completedCount}</span> / {Object.keys(agents).length || 5}
+        <div 
+          ref={logContainerRef}
+          className="p-4 overflow-y-auto max-h-[300px] flex-grow space-y-1 text-xs"
+        >
+          {displayEvents.length === 0 && <span className="text-slate-600 italic">Awaiting pipeline initialization...</span>}
+          {displayEvents.map((e, idx) => {
+             const ev = e as Record<string, unknown>
+             const ts = formatLogTime(ev.timestamp as string | undefined)
+             const agent = ev.agent as string
+             const eventName = ev.event as string
+             
+             let msg = ""
+             let color = "text-slate-400"
+             
+             if (eventName === "discovery_started") { msg = "Discovery Engine initialized"; color = "text-blue-400" }
+             else if (eventName === "agent_started") { msg = `${agent} started`; color = "text-emerald-400" }
+             else if (eventName === "agent_progress") { msg = `${agent} → ${ev.message}`; color = "text-slate-300" }
+             else if (eventName === "agent_completed") { msg = `${agent} completed`; color = "text-emerald-500 font-medium" }
+             else if (eventName === "agent_failed") { msg = `${agent} failed: ${ev.error}`; color = "text-red-400" }
+             else if (eventName === "discovery_completed") { msg = "Discovery Engine completed successfully"; color = "text-emerald-400 font-bold" }
+             
+             if (!msg) return null;
+             
+             const isActiveRow = replayState?.isReplaying && idx === displayEvents.length - 1;
+             
+             return (
+               <div key={idx} className={`flex space-x-4 ${color} ${isActiveRow ? 'bg-slate-800/50 -mx-2 px-2 py-0.5 rounded' : ''}`}>
+                 <span className="text-slate-500 w-24 flex-shrink-0 tabular-nums">{ts}</span>
+                 <span className="truncate">{msg}</span>
+               </div>
+             )
+          })}
         </div>
+        
+        {/* Replay Controls */}
+        {isComplete && replayState && replayActions && (
+          <div className="px-4 py-3 bg-slate-900/80 border-t border-slate-800 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <button 
+                onClick={() => replayState.isPlaying ? replayActions.pauseReplay() : replayActions.startReplay()}
+                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md transition-colors"
+                title={replayState.isPlaying ? "Pause Replay" : "Play Replay"}
+              >
+                {replayState.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </button>
+              <button 
+                onClick={() => replayActions.restartReplay()}
+                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md transition-colors"
+                title="Restart Replay"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+              
+              <div className="ml-4 flex items-center space-x-2 text-xs">
+                <span className="text-slate-400">Speed:</span>
+                <select 
+                  className="bg-slate-800 border-none text-slate-200 rounded px-2 py-1 outline-none"
+                  value={replayState.speed}
+                  onChange={(e) => replayActions.changeSpeed(Number(e.target.value) as 0.5 | 1 | 2 | 5)}
+                >
+                  <option value={0.5}>0.5x</option>
+                  <option value={1}>1x</option>
+                  <option value={2}>2x</option>
+                  <option value={5}>5x</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-3 text-xs">
+              <span className="text-slate-400">
+                Event {replayState.isReplaying ? replayState.currentIndex + 1 : events.length} / {events.length}
+              </span>
+              <div className="w-32 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-purple-500 transition-all duration-200 ease-linear" 
+                  style={{ width: `${(replayState.isReplaying ? (replayState.currentIndex + 1) / events.length : 1) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Performance Summary (Only shown on complete, hides on replay to prevent confusion) */}
+      {isComplete && !replayState?.isReplaying && (
+        <div className="bg-slate-900/50 border border-emerald-500/20 rounded-lg p-4 shadow-xl">
+           <h4 className="text-emerald-400 font-semibold mb-4 flex items-center gap-2">
+             {actualSessionStatus === "FAILED" ? (
+               <><XCircle className="h-4 w-4 text-red-400" /> <span className="text-red-400">DISCOVERY FAILED</span></>
+             ) : (
+               <><CheckCircle2 className="h-4 w-4" /> DISCOVERY COMPLETED</>
+             )}
+           </h4>
+           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-slate-400">
+             <div>
+               <div className="text-xs mb-1 uppercase tracking-wider text-slate-500">Actual Execution</div>
+               <div className="text-slate-200 font-medium text-base">{actualDurationMs ? formatDuration(actualDurationMs) : getGlobalRuntime()}</div>
+             </div>
+             <div>
+               <div className="text-xs mb-1 uppercase tracking-wider text-slate-500">Agents</div>
+               <div className="text-slate-200 font-medium text-base">{completedCount} / 6 completed</div>
+             </div>
+             <div>
+               <div className="text-xs mb-1 uppercase tracking-wider text-slate-500">Fastest Agent</div>
+               <div className="text-slate-200 font-medium text-base">{fastestAgent.replace("_agent", "") || "-"} <span className="text-slate-500 text-xs ml-1">{minDuration !== Infinity ? `${(minDuration/1000).toFixed(3)}s` : ''}</span></div>
+             </div>
+             <div>
+               <div className="text-xs mb-1 uppercase tracking-wider text-slate-500">Slowest Agent</div>
+               <div className="text-slate-200 font-medium text-base">{slowestAgent.replace("_agent", "") || "-"} <span className="text-slate-500 text-xs ml-1">{maxDuration !== -1 ? `${(maxDuration/1000).toFixed(3)}s` : ''}</span></div>
+             </div>
+           </div>
+        </div>
+      )}
     </div>
   )
 }

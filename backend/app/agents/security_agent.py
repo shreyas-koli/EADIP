@@ -85,13 +85,13 @@ class SecurityAgent:
         and any downstream agents that declare a ``"security"``
         dependency.
         """
-        context.emit_agent_progress("security", "Inspecting columns for sensitive data...")
-        context.emit_agent_progress("security", "Checking email/password/token-like fields...")
-        context.emit_agent_progress("security", "Evaluating sensitive-column exposure...")
-        context.emit_agent_progress("security", "Generating security findings...")
+        context.emit_agent_progress("security", "Inspecting columns for sensitive data...", 0)
         
-        security_report = self._analyzer.analyse(warehouse, context)
+        def _progress(msg: str, pct: int | None = None) -> None:
+            context.emit_agent_progress("security", msg, pct)
+            
+        security_report = self._analyzer.analyse(warehouse, context, progress_callback=_progress)
         
-        context.emit_agent_progress("security", "Security analysis completed.")
+        context.emit_agent_progress("security", "Security analysis completed.", 100)
         context.set_agent_result("security", security_report)
         return security_report

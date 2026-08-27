@@ -40,7 +40,7 @@ class RecommendationEngine:
             "data_quality": self._generate_data_quality_recommendations,
         }
 
-    def analyse(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
+    def analyse(self, warehouse: Warehouse, context: SharedContext, progress_callback: Any = None) -> dict[str, Any]:
         """
         Analyse the warehouse and return recommendations.
 
@@ -48,6 +48,8 @@ class RecommendationEngine:
         ──────────
         warehouse : Warehouse
             A registered ``Warehouse`` ORM instance.
+        progress_callback : Any, optional
+            A callback function for reporting progress.
 
         Returns
         ───────
@@ -56,10 +58,14 @@ class RecommendationEngine:
         """
         recommendations: list[dict[str, Any]] = []
 
-        for agent_key, rule_generator in self._registry.items():
+        total_steps = len(self._registry)
+        for i, (agent_key, rule_generator) in enumerate(self._registry.items()):
+            if progress_callback:
+                progress_callback(f"Analyzing {agent_key}...", int((i / total_steps) * 80))
             agent_result = context.get_agent_result(agent_key) or {}
             recommendations.extend(rule_generator(agent_result))
 
+        if progress_callback: progress_callback("Deduplicating recommendations...", 85)
         recommendations = self._deduplicate_recommendations(recommendations)
 
         priority_order = {_HIGH: 0, _MEDIUM: 1, _LOW: 2}

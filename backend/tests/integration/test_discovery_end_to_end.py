@@ -89,7 +89,8 @@ def mock_external_infrastructure():
     that connect to a real remote database. The rest of the pipeline executes for real.
     """
     with patch("app.agents.metadata_agent.MetadataInspector") as mock_metadata_inspector, \
-         patch("app.agents.statistics_agent.StatisticsAnalyzer") as mock_statistics_analyzer:
+         patch("app.agents.statistics_agent.StatisticsAnalyzer") as mock_statistics_analyzer, \
+         patch("app.agents.monitoring_agent.MonitoringAnalyzer") as mock_monitoring_analyzer:
          
         mock_inspector_instance = MagicMock()
         mock_metadata_inspector.return_value = mock_inspector_instance
@@ -121,14 +122,22 @@ def mock_external_infrastructure():
             ]
         }
         
-        yield mock_inspector_instance, mock_stats_instance
+        mock_monitoring_instance = MagicMock()
+        mock_monitoring_analyzer.return_value = mock_monitoring_instance
+        mock_monitoring_instance.analyse.return_value = {
+            "summary": {"partial_failure": False},
+            "findings": [],
+            "errors": []
+        }
+        
+        yield mock_inspector_instance, mock_stats_instance, mock_monitoring_instance
 
 def test_end_to_end_successful_execution(e2e_session, mock_external_infrastructure):
     """
     Test a full successful end-to-end execution of the discovery pipeline.
     """
     session, wh, headers = e2e_session
-    mock_inspector, mock_stats = mock_external_infrastructure
+    mock_inspector, mock_stats, mock_monitoring = mock_external_infrastructure
     
     # 1. Execute the HTTP request
     response = client.post("/discovery/execute", json={"warehouse_id": wh.id}, headers=headers)
@@ -142,19 +151,20 @@ def test_end_to_end_successful_execution(e2e_session, mock_external_infrastructu
     assert data["warehouse_id"] == wh.id
     assert data["status"] == "COMPLETED"
     assert "agent_executions" in data
-    assert len(data["agent_executions"]) == 5
+    assert len(data["agent_executions"]) == 6
     
     session_id = data["session_id"]
     
     # Verify execution order / dependencies (wave numbers should reflect the graph)
     agents = {a["agent_name"]: a for a in data["agent_executions"]}
-    assert "metadata" in agents and "statistics" in agents
+    assert "metadata" in agents and "statistics" in agents and "monitoring" in agents
     assert "security" in agents and "data_quality" in agents
     assert "recommendation" in agents
     
-    # Wave 1: metadata, statistics
+    # Wave 1: metadata, statistics, monitoring
     assert agents["metadata"]["wave"] == 1
     assert agents["statistics"]["wave"] == 1
+    assert agents["monitoring"]["wave"] == 1
     
     # Wave 2: security, data_quality
     assert agents["security"]["wave"] == 2
@@ -172,10 +182,11 @@ def test_end_to_end_successful_execution(e2e_session, mock_external_infrastructu
     assert db_session.warehouse_id == wh.id
     assert db_session.status == "COMPLETED"
     
-    assert len(db_session.agent_executions) == 5
+    assert len(db_session.agent_executions) == 6
     db_agents = {a.agent_name: a for a in db_session.agent_executions}
     assert db_agents["metadata"].status == "COMPLETED"
     assert db_agents["statistics"].status == "COMPLETED"
+    assert db_agents["monitoring"].status == "COMPLETED"
     assert db_agents["security"].status == "COMPLETED"
     assert db_agents["data_quality"].status == "COMPLETED"
     assert db_agents["recommendation"].status == "COMPLETED"
@@ -200,7 +211,7 @@ def test_end_to_end_skipped_agent_semantics(e2e_session, mock_external_infrastru
     Test skipped agent semantics end-to-end where an upstream dependency fails.
     """
     session, wh, headers = e2e_session
-    mock_inspector, mock_stats = mock_external_infrastructure
+    mock_inspector, mock_stats, mock_monitoring = mock_external_infrastructure
     
     # Make the upstream metadata dependency fail
     mock_inspector.inspect_database.side_effect = Exception("Failed to connect to database")
@@ -223,8 +234,9 @@ def test_end_to_end_skipped_agent_semantics(e2e_session, mock_external_infrastru
     assert agents["data_quality"]["status"] == "SKIPPED"
     assert agents["recommendation"]["status"] == "SKIPPED"
     
-    # statistics should still complete (independent)
+    # statistics and monitoring should still complete (independent)
     assert agents["statistics"]["status"] == "COMPLETED"
+    assert agents["monitoring"]["status"] == "COMPLETED"
     
     # Verify persistence preserves the distinction
     session_id = data["session_id"]
@@ -237,6 +249,7 @@ def test_end_to_end_skipped_agent_semantics(e2e_session, mock_external_infrastru
     assert db_agents["data_quality"].status == "SKIPPED"
     assert db_agents["recommendation"].status == "SKIPPED"
     assert db_agents["statistics"].status == "COMPLETED"
+    assert db_agents["monitoring"].status == "COMPLETED"
 
 def test_end_to_end_skipped_without_failure_semantics(e2e_session, mock_external_infrastructure):
     """
@@ -245,18 +258,19 @@ def test_end_to_end_skipped_without_failure_semantics(e2e_session, mock_external
     (This tests the session-level status aggregation logic).
     """
     session, wh, headers = e2e_session
-    mock_inspector, mock_stats = mock_external_infrastructure
+    mock_inspector, mock_stats, mock_monitoring = mock_external_infrastructure
     
     with patch("app.orchestrator.agent_orchestrator.AgentOrchestrator.execute_parallel") as mock_exec:
         mock_exec.return_value = {
             "session_id": str(uuid.uuid4()),
             "total_execution_ms": 100.0,
-            "completed": ["metadata", "statistics"],
+            "completed": ["metadata", "statistics", "monitoring"],
             "failed": [],
             "skipped": ["security", "data_quality", "recommendation"],
             "agent_execution": [
                 {"agent": "metadata", "status": "COMPLETED", "started_at": "2023-01-01T00:00:00+00:00", "finished_at": "2023-01-01T00:00:01+00:00", "duration_ms": 100, "wave": 1},
                 {"agent": "statistics", "status": "COMPLETED", "started_at": "2023-01-01T00:00:00+00:00", "finished_at": "2023-01-01T00:00:01+00:00", "duration_ms": 100, "wave": 1},
+                {"agent": "monitoring", "status": "COMPLETED", "started_at": "2023-01-01T00:00:00+00:00", "finished_at": "2023-01-01T00:00:01+00:00", "duration_ms": 100, "wave": 1},
                 {"agent": "security", "status": "SKIPPED", "started_at": "2023-01-01T00:00:00+00:00", "finished_at": "2023-01-01T00:00:01+00:00", "duration_ms": 0, "wave": 2},
                 {"agent": "data_quality", "status": "SKIPPED", "started_at": "2023-01-01T00:00:00+00:00", "finished_at": "2023-01-01T00:00:01+00:00", "duration_ms": 0, "wave": 2},
                 {"agent": "recommendation", "status": "SKIPPED", "started_at": "2023-01-01T00:00:00+00:00", "finished_at": "2023-01-01T00:00:01+00:00", "duration_ms": 0, "wave": 3}
@@ -275,7 +289,7 @@ def test_end_to_end_persistence_failure_rollback(e2e_session, mock_external_infr
     Verify that if persistence fails after execution starts, no partial DiscoverySession remains.
     """
     session, wh, headers = e2e_session
-    mock_inspector, mock_stats = mock_external_infrastructure
+    mock_inspector, mock_stats, mock_monitoring = mock_external_infrastructure
     
     # We will patch ExecutionService to raise an error during persistence
     with patch("app.services.execution_service.ExecutionService.persist_execution", side_effect=ValueError("Database error during persistence")):
@@ -294,7 +308,7 @@ def test_request_isolation_concurrency(e2e_session, mock_external_infrastructure
     and do not leak state.
     """
     session, wh, headers = e2e_session
-    mock_inspector, mock_stats = mock_external_infrastructure
+    mock_inspector, mock_stats, mock_monitoring = mock_external_infrastructure
     
     import concurrent.futures
     

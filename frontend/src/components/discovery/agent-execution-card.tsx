@@ -4,7 +4,7 @@ import * as React from "react"
 import { AgentExecution } from "@/lib/api/discovery"
 import { AgentStatus } from "@/components/agent/agent-components"
 import { Card } from "@/components/ui/card"
-import { Shield, FileText, BarChart, CheckSquare, Search, Lightbulb, Loader2, CheckCircle2, XCircle } from "lucide-react"
+import { Shield, FileText, BarChart, CheckSquare, Search, Lightbulb, Loader2, CheckCircle2, XCircle, Monitor } from "lucide-react"
 
 interface AgentExecutionCardProps {
   name: string
@@ -12,6 +12,7 @@ interface AgentExecutionCardProps {
   isActive?: boolean
   events?: Record<string, unknown>[]
   isInitializing?: boolean
+  isReplaying?: boolean
 }
 
 const parseTime = (isoString?: string) => {
@@ -23,7 +24,7 @@ const formatDuration = (ms: number) => {
   return `${seconds.padStart(6, '0')}s`
 }
 
-export function AgentExecutionCard({ name, execution, isActive, events = [], isInitializing }: AgentExecutionCardProps) {
+export function AgentExecutionCard({ name, execution, isActive, events = [], isInitializing, isReplaying }: AgentExecutionCardProps) {
   // Map agent name to backend key
   const backendName = name.split(" ")[0].toLowerCase()
 
@@ -49,6 +50,7 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
   let finishedAt: number | null = null
   let durationMs: number | null = null
   let activityLogs: string[] = []
+  let currentProgress: number | null = null
 
   if (isInitializing) {
     liveStatus = "INITIALIZING"
@@ -62,15 +64,15 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
     } else {
       activityLogs = ["Queued for execution..."]
     }
-  } else if (execution) {
-    // If we already have the final execution, set it
+  } else if (execution && !isReplaying) {
+    // If we already have the final execution and are NOT replaying, set it
     liveStatus = execution.status as "COMPLETED" | "FAILED" | "SKIPPED" | "RUNNING" | "WAITING"
     if (execution.started_at) startedAt = parseTime(execution.started_at) || null
     if (execution.finished_at) finishedAt = parseTime(execution.finished_at) || null
     if (execution.duration_ms) durationMs = execution.duration_ms
     activityLogs = [execution.status === "FAILED" ? "Execution failed." : "Analysis completed."]
   } else {
-    // Parse stream events to derive live state
+    // Parse stream events to derive live state or replay display state
     events.forEach(ev => {
       const evAgent = ev.agent as string
       if (evAgent === backendName || (backendName === "data" && evAgent === "data_quality")) {
@@ -89,6 +91,9 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
           liveStatus = "SKIPPED"
         } else if (ev.event === "agent_progress") {
           if (ev.message) activityLogs.push(ev.message as string)
+          if (ev.progress !== undefined && ev.progress !== null) {
+            currentProgress = ev.progress as number
+          }
         }
       }
     })
@@ -114,6 +119,7 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
     if (nl.includes("security")) return <Shield className="h-5 w-5" />
     if (nl.includes("data")) return <CheckSquare className="h-5 w-5" />
     if (nl.includes("recommendation")) return <Lightbulb className="h-5 w-5" />
+    if (nl.includes("monitoring")) return <Monitor className="h-5 w-5" />
     return <Search className="h-5 w-5" />
   }
 
@@ -130,13 +136,20 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
   const showWaitLogs = liveStatus === "WAITING" && isActive
 
   const generateProgressString = () => {
-    const length = 18
-    const pos = progressFrames
-    const arr = Array(length).fill('░')
-    for (let i = 0; i < 4; i++) {
-      arr[(pos + i) % length] = '█'
+    if (currentProgress !== null) {
+      const length = 18
+      const filled = Math.round((currentProgress / 100) * length)
+      const empty = length - filled
+      return `${'█'.repeat(filled)}${'░'.repeat(empty)} ${currentProgress}%`
+    } else {
+      const length = 18
+      const pos = progressFrames
+      const arr = Array(length).fill('░')
+      for (let i = 0; i < 4; i++) {
+        arr[(pos + i) % length] = '█'
+      }
+      return `[${arr.join('')}] Processing...`
     }
-    return arr.join('')
   }
   
   const formatClockTime = (ts: number) => {
@@ -190,7 +203,7 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
           {(liveStatus === "RUNNING" || liveStatus === "INITIALIZING") && (
             <div className="flex items-center space-x-2 mt-auto pt-2">
               <span className="text-emerald-500 tracking-widest text-[11px] w-full flex items-center gap-2">
-                Progress: [{generateProgressString()}] Processing...
+                Progress: {generateProgressString()}
               </span>
             </div>
           )}

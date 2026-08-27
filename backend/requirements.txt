@@ -20,4 +20,4 @@ email-validator
 
 typing-extensions
 
-greenlet
+greenletpsutil

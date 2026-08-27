@@ -52,7 +52,12 @@ class StatisticsAnalyzer:
 
     # ── Public API ───────────────────────────────────────────────
 
-    def analyse(self, warehouse: Warehouse, include_system_schemas: bool = False) -> dict[str, Any]:
+    def analyse(
+        self, 
+        warehouse: Warehouse, 
+        include_system_schemas: bool = False,
+        progress_callback: Any = None
+    ) -> dict[str, Any]:
         """
         Collect and return structural statistics for a warehouse.
 
@@ -78,10 +83,19 @@ class StatisticsAnalyzer:
         engine = self._connect(warehouse)
 
         try:
+            if progress_callback: progress_callback("Inspecting table statistics...", 10)
             db_summary = self._get_database_summary(engine, include_system_schemas)
+            
+            if progress_callback: progress_callback("Counting rows...", 35)
             table_stats = self._get_table_statistics(engine, include_system_schemas)
+            
+            if progress_callback: progress_callback("Calculating table sizes...", 60)
             index_stats = self._get_index_statistics(engine, include_system_schemas)
+            
+            if progress_callback: progress_callback("Analyzing column distributions...", 85)
             constraint_stats = self._get_constraint_statistics(engine, include_system_schemas)
+            
+            if progress_callback: progress_callback("Computing statistics...", 95)
             summary = self._calculate_summary(
                 db_summary, table_stats, index_stats, constraint_stats,
             )

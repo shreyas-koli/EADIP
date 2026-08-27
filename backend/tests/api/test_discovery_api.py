@@ -611,3 +611,65 @@ def test_api_filter_and_pagination(db_session):
     assert data["page"] == 2
     assert data["page_size"] == 5
     assert all(item["status"] == "COMPLETED" for item in data["items"])
+
+def test_sse_decimal_serialization(db_session):
+    """
+    Verify that Discovery SSE successfully serializes Decimal types and other
+    complex Python objects using FastAPI jsonable_encoder without crashing.
+    """
+    session, wh, _, headers = db_session
+    from decimal import Decimal
+    
+    with patch("app.api.discovery.AgentOrchestrator") as mock_orchestrator_class:
+        mock_instance = MagicMock()
+        mock_orchestrator_class.return_value = mock_instance
+        
+        # Simulate a result containing a Decimal object, which ordinarily breaks json.dumps
+        mock_instance.execute_parallel.return_value = {
+            "session_id": str(uuid.uuid4()),
+            "total_execution_ms": 100.0,
+            "completed": ["metadata"],
+            "failed": [],
+            "skipped": [],
+            "agent_execution": [
+                {
+                    "agent": "metadata",
+                    "started_at": "2023-01-01T00:00:00+00:00",
+                    "finished_at": "2023-01-01T00:00:01+00:00",
+                    "duration_ms": 100.0,
+                    "wave": 1
+                }
+            ],
+            "agent_results": {
+                "monitoring": {
+                    "some_decimal_value": Decimal("123.456")
+                }
+            }
+        }
+        
+        # Request stream execution
+        response = client.post(f"/discovery/execute?stream=true", json={"warehouse_id": wh.id}, headers=headers)
+        assert response.status_code == 200
+        
+        # Consume the streaming response
+        lines = list(response.iter_lines())
+        
+        # Ensure we received data
+        assert len(lines) > 0
+        
+        # Check that '123.456' successfully made it out into the SSE text payload
+        found_decimal = False
+        for line in lines:
+            if line.startswith("data:"):
+                import json
+                payload = json.loads(line[5:].strip())
+                if payload.get("event") == "discovery_completed":
+                    monitoring = payload.get("monitoring", {})
+                    if "some_decimal_value" in monitoring:
+                        found_decimal = True
+                        val = monitoring["some_decimal_value"]
+                        # FastAPI's jsonable_encoder typically converts Decimals to float or string depending on version,
+                        # but in standard configurations it becomes a float or string that represents 123.456.
+                        assert str(val) == "123.456" or val == 123.456
+                        
+        assert found_decimal, "The Decimal value was not found in the SSE stream output."

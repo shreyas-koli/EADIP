@@ -8,6 +8,7 @@ as typed, validated attributes through a Pydantic Settings model.
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -54,6 +55,41 @@ class Settings(BaseSettings):
     REC_WIDE_TABLE_COLS: int = 50
     REC_EMPTY_TABLE_ROWS: int = 0
     REC_NULLABLE_COLUMN_PCT: float = 0.5
+
+    # ── Monitoring Thresholds ────────────────────────────────────
+    """
+    Monitoring Agent runtime thresholds.
+    These define what constitutes a warning or critical finding when analyzing
+    PostgreSQL runtime state (pg_stat_activity, pg_locks, etc.)
+    """
+    MONITORING_LONG_RUNNING_QUERY_SECONDS: int = Field(default=5, ge=0)
+    MONITORING_LONG_RUNNING_TRANSACTION_SECONDS: int = Field(default=30, ge=0)
+    MONITORING_CONNECTION_WARNING_PERCENT: float = Field(default=75.0, ge=0.0, le=100.0)
+    MONITORING_CONNECTION_CRITICAL_PERCENT: float = Field(default=90.0, ge=0.0, le=100.0)
+    MONITORING_BLOCKING_QUERY_THRESHOLD: int = Field(default=1, ge=0)
+    MONITORING_IDLE_IN_TRANSACTION_THRESHOLD: int = Field(default=1, ge=0)
+    MONITORING_CACHE_HIT_WARNING_PERCENT: float = Field(default=90.0, ge=0.0, le=100.0)
+    
+    # ── Host / System Monitoring Thresholds ──────────────────────
+    MONITORING_CPU_WARNING_PERCENT: float = Field(default=80.0, ge=0.0, le=100.0)
+    MONITORING_CPU_CRITICAL_PERCENT: float = Field(default=95.0, ge=0.0, le=100.0)
+    
+    MONITORING_MEMORY_WARNING_PERCENT: float = Field(default=85.0, ge=0.0, le=100.0)
+    MONITORING_MEMORY_CRITICAL_PERCENT: float = Field(default=95.0, ge=0.0, le=100.0)
+    MONITORING_SWAP_WARNING_PERCENT: float = Field(default=50.0, ge=0.0, le=100.0)
+    MONITORING_SWAP_CRITICAL_PERCENT: float = Field(default=80.0, ge=0.0, le=100.0)
+    
+    MONITORING_DISK_CAPACITY_WARNING_PERCENT: float = Field(default=85.0, ge=0.0, le=100.0)
+    MONITORING_DISK_CAPACITY_CRITICAL_PERCENT: float = Field(default=95.0, ge=0.0, le=100.0)
+    # Generic I/O activity thresholds (Bytes per second)
+    MONITORING_DISK_IO_READ_MB_S_WARNING: float = Field(default=100.0, ge=0.0)
+    MONITORING_DISK_IO_WRITE_MB_S_WARNING: float = Field(default=100.0, ge=0.0)
+    
+    MONITORING_NETWORK_ERRORS_WARNING: int = Field(default=1, ge=0)
+    MONITORING_NETWORK_DROPS_WARNING: int = Field(default=1, ge=0)
+    
+    MONITORING_PROCESS_CPU_WARNING_PERCENT: float = Field(default=80.0, ge=0.0)
+    MONITORING_PROCESS_MEMORY_WARNING_MB: float = Field(default=1024.0, ge=0.0)
 
 
     # ── Pydantic Settings v2 config ──────────────────────────────

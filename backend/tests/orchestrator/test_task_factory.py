@@ -51,7 +51,7 @@ def test_explicit_context_propagation():
     context = SharedContext()
     tasks = factory.build_metadata_discovery(warehouse, context)
     
-    task_names = {"metadata", "statistics", "security", "data_quality", "recommendation"}
+    task_names = {"metadata", "statistics", "monitoring", "security", "data_quality", "recommendation"}
     
     for task in tasks:
         assert task.name in task_names

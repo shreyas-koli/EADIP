@@ -266,15 +266,19 @@ class SharedContext:
                 "message": message
             })
 
-    def emit_agent_progress(self, agent: str, message: str) -> None:
+    def emit_agent_progress(self, agent: str, message: str, progress: int | None = None) -> None:
         """
         Emit a progress update for a specific agent.
         """
-        self._emit({
+        event_data = {
             "event": "agent_progress",
             "agent": agent,
             "message": message
-        })
+        }
+        if progress is not None:
+            event_data["progress"] = progress
+            
+        self._emit(event_data)
 
     def get_execution_logs(self) -> list[dict[str, Any]]:
         """

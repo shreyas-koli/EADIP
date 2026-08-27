@@ -30,7 +30,7 @@ class DataQualityAnalyzer:
     Evaluates warehouse data quality dimensions using available metadata.
     """
 
-    def analyse(self, warehouse: Warehouse, context: SharedContext) -> dict[str, Any]:
+    def analyse(self, warehouse: Warehouse, context: SharedContext, progress_callback: Any = None) -> dict[str, Any]:
         """
         Analyse the warehouse and return a data quality report.
 
@@ -47,13 +47,19 @@ class DataQualityAnalyzer:
         metadata = context.get_agent_result("metadata") or {}
 
         schemas = metadata.get("schemas", {})
+        schema_keys = list(schemas.keys())
+        total_schemas = len(schema_keys)
 
         issues = []
         recommendations = []
 
         # ── 1. Completeness ──────────────────────────────────────────
+        if progress_callback: progress_callback("Inspecting nullable columns...", 10)
 
-        for schema_name, schema_body in schemas.items():
+        for schema_idx, schema_name in enumerate(schema_keys):
+            schema_body = schemas[schema_name]
+            base_pct = 10 + int((schema_idx / max(total_schemas, 1)) * 20)
+            
             for table_name, table_body in schema_body.get("tables", {}).items():
                 columns = table_body.get("columns", [])
                 total_cols = len(columns)
@@ -86,8 +92,12 @@ class DataQualityAnalyzer:
         }
 
         # ── 2. Uniqueness ────────────────────────────────────────────
+        if progress_callback: progress_callback("Checking schema quality...", 35)
 
-        for schema_name, schema_body in schemas.items():
+        for schema_idx, schema_name in enumerate(schema_keys):
+            schema_body = schemas[schema_name]
+            base_pct = 35 + int((schema_idx / max(total_schemas, 1)) * 20)
+            
             for table_name, table_body in schema_body.get("tables", {}).items():
                 columns = table_body.get("columns", [])
                 has_pk = any(col.get("primary_key") for col in columns)
@@ -114,8 +124,12 @@ class DataQualityAnalyzer:
         }
 
         # ── 3. Validity ──────────────────────────────────────────────
+        if progress_callback: progress_callback("Checking datatype consistency...", 60)
 
-        for schema_name, schema_body in schemas.items():
+        for schema_idx, schema_name in enumerate(schema_keys):
+            schema_body = schemas[schema_name]
+            base_pct = 60 + int((schema_idx / max(total_schemas, 1)) * 20)
+            
             for table_name, table_body in schema_body.get("tables", {}).items():
                 columns = table_body.get("columns", [])
                 for col in columns:
@@ -144,6 +158,7 @@ class DataQualityAnalyzer:
         }
 
         # ── 4. Consistency ───────────────────────────────────────────
+        if progress_callback: progress_callback("Inspecting duplicate patterns...", 85)
 
         col_type_map = defaultdict(list)
         for schema_name, schema_body in schemas.items():
@@ -180,6 +195,7 @@ class DataQualityAnalyzer:
         }
 
         # ── Scoring ──────────────────────────────────────────────────
+        if progress_callback: progress_callback("Generating data-quality findings...", 95)
 
         score = 100
         for issue in issues:

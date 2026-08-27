@@ -14,6 +14,7 @@ import threading
 import json
 from datetime import datetime, timezone
 from fastapi.responses import StreamingResponse
+from fastapi.encoders import jsonable_encoder
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,13 @@ def execute_discovery(
                 session_obj = ExecutionService.persist_execution(thread_db, warehouse.id, summary)
                 # We need to serialize the pydantic model to jsonable dict
                 response_obj = DiscoverySessionResponse.model_validate(session_obj)
-                q.put({"event": "discovery_completed", "session": response_obj.model_dump(mode="json")})
+                # Include monitoring result for frontend display
+                monitoring_result = summary.get("agent_results", {}).get("monitoring")
+                q.put({
+                    "event": "discovery_completed",
+                    "session": response_obj.model_dump(mode="json"),
+                    "monitoring": monitoring_result,
+                })
                 
         except Exception as exc:
             logger.error(f"Background execution failed: {exc}")
@@ -150,6 +157,6 @@ def execute_discovery(
             event = q.get()
             if event is None:
                 break
-            yield f"data: {json.dumps(event)}\n\n"
+            yield f"data: {json.dumps(jsonable_encoder(event))}\n\n"
 
     return StreamingResponse(generate_events(), media_type="text/event-stream")

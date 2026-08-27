@@ -15,6 +15,7 @@ import { WarehouseSelector } from "@/components/discovery/warehouse-selector"
 import { DiscoveryPipeline } from "@/components/discovery/discovery-pipeline"
 import { DiscoveryResult } from "@/components/discovery/discovery-result"
 import { DiscoveryConsole } from "@/components/discovery/discovery-console"
+import { useExecutionReplay } from "@/hooks/useExecutionReplay"
 
 export default function DiscoveryPage() {
   const [warehouses, setWarehouses] = React.useState<Warehouse[]>([])
@@ -33,6 +34,12 @@ export default function DiscoveryPage() {
   // Initialization state
   const [isInitializing, setIsInitializing] = React.useState(false)
   const [initCountdown, setInitCountdown] = React.useState(5)
+  
+  // Monitoring result
+  const [monitoringResult, setMonitoringResult] = React.useState<Record<string, unknown> | null>(null)
+
+  // Replay System
+  const replay = useExecutionReplay(streamEvents)
 
   React.useEffect(() => {
     let mounted = true
@@ -63,16 +70,11 @@ export default function DiscoveryPage() {
     setResultSession(null)
     setStreamEvents([])
     setIsConsoleVisible(true)
+    setMonitoringResult(null)
     
-    // 5-second UI initialization phase
-    setIsInitializing(true)
-    setInitCountdown(5)
-    
-    for (let i = 4; i >= 0; i--) {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setInitCountdown(i)
-    }
     setIsInitializing(false)
+    setInitCountdown(0)
+    replay.actions.reset()
     
     try {
       await discoveryApi.executeStream(
@@ -81,6 +83,9 @@ export default function DiscoveryPage() {
           setStreamEvents(prev => [...prev, event as Record<string, unknown>])
           if (event.event === "discovery_completed") {
             setResultSession(event.session as DiscoverySession)
+            if (event.monitoring) {
+              setMonitoringResult(event.monitoring as Record<string, unknown>)
+            }
             setIsRunning(false)
           } else if (event.event === "error") {
             setError((event.message as string) || "Discovery execution failed during stream.")
@@ -159,8 +164,11 @@ export default function DiscoveryPage() {
             <DiscoveryConsole 
               warehouseName={selectedWarehouseName}
               isComplete={!isRunning && !!resultSession}
+              actualSessionStatus={resultSession?.status}
+              actualDurationMs={resultSession?.total_duration_ms}
               events={streamEvents}
-              totalDurationMs={resultSession?.total_duration_ms}
+              replayState={replay.state}
+              replayActions={replay.actions}
               isInitializing={isInitializing}
               initCountdown={initCountdown}
             />
@@ -179,7 +187,8 @@ export default function DiscoveryPage() {
                 <DiscoveryPipeline 
                   executions={resultSession?.agent_executions} 
                   isRunning={isRunning} 
-                  events={streamEvents}
+                  events={replay.state.isReplaying ? replay.state.visibleEvents : streamEvents}
+                  isReplaying={replay.state.isReplaying}
                   isInitializing={isInitializing}
                 />
               </div>
@@ -212,6 +221,7 @@ export default function DiscoveryPage() {
           <DiscoveryResult 
             session={resultSession} 
             warehouseName={selectedWarehouseName}
+            monitoringResult={monitoringResult}
           />
         )}
       </div>
