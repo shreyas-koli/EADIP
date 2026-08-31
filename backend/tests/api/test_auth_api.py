@@ -71,3 +71,46 @@ def test_form_login_fails_invalid_credentials():
         data={"username": "test@example.com", "password": "wrongpassword"}
     )
     assert response.status_code == 401
+
+def test_register_normal_password_succeeds():
+    response = client.post(
+        "/auth/register",
+        json={"full_name": "New User", "email": "newuser@example.com", "password": "Password123!"}
+    )
+    assert response.status_code == 201
+    
+    # Verify login works
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "newuser@example.com", "password": "Password123!"}
+    )
+    assert login_response.status_code == 200
+
+def test_register_password_exactly_72_bytes_succeeds():
+    password = "a" * 72
+    response = client.post(
+        "/auth/register",
+        json={"full_name": "New User 2", "email": "newuser2@example.com", "password": password}
+    )
+    assert response.status_code == 201
+
+def test_register_password_over_72_bytes_fails():
+    password = "a" * 73
+    response = client.post(
+        "/auth/register",
+        json={"full_name": "New User 3", "email": "newuser3@example.com", "password": password}
+    )
+    assert response.status_code == 422
+    assert "Password cannot exceed 72 bytes" in response.text
+
+def test_register_multibyte_unicode_password_calculated_correctly():
+    # '🔥' is 4 bytes in UTF-8. 
+    # 18 of them = 72 bytes. 
+    # 19 of them = 76 bytes, which should fail even though it's only 19 characters.
+    password = "🔥" * 19
+    response = client.post(
+        "/auth/register",
+        json={"full_name": "New User 4", "email": "newuser4@example.com", "password": password}
+    )
+    assert response.status_code == 422
+    assert "Password cannot exceed 72 bytes" in response.text

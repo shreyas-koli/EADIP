@@ -8,7 +8,7 @@ and shape outgoing responses so internal model details never leak.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 # ── Request schemas ──────────────────────────────────────────────
@@ -45,6 +45,13 @@ class UserRegister(BaseModel):
         # description="Plaintext password (min 8 characters).",
         description="Password must contain at least 8 characters.",
     )
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_byte_length(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password cannot exceed 72 bytes due to bcrypt limitations.")
+        return v
 
 
 class UserLogin(BaseModel):
