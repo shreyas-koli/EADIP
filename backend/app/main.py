@@ -24,11 +24,21 @@ async def lifespan(app: FastAPI):
     """Execute logic on application startup and shutdown."""
     # ── Startup ──────────────────────────────────────────────────
     import logging
+    from app.database.init_db import init_db
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     logger = logging.getLogger(__name__)
+
+    # Initialize the database schema for deployment compatibility
+    try:
+        init_db()
+        logger.info("📦  Database initialized successfully")
+    except Exception as e:
+        logger.error(f"❌  Failed to initialize database: {e}")
+        
     logger.info("🚀  EADIP Backend Started Successfully")
     yield
     # ── Shutdown (add cleanup logic here if needed) ──────────────
@@ -51,8 +61,8 @@ if settings.BACKEND_CORS_ORIGINS:
         CORSMiddleware,
         allow_origins=settings.BACKEND_CORS_ORIGINS,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Accept"],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
 # ── Routers ──────────────────────────────────────────────────────
