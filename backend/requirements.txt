@@ -10,7 +10,7 @@ pydantic-settings
 python-dotenv
 
 passlib[bcrypt]
-bcrypt
+bcrypt==4.2.0
 
 python-jose[cryptography]
 
