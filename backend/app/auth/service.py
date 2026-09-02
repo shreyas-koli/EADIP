@@ -71,6 +71,9 @@ def register_user(db: Session, user_data: UserRegister) -> User:
     if existing is not None:
         raise ValueError(f"Email '{user_data.email}' is already registered.")
 
+    if len(user_data.password.encode("utf-8")) > 72:
+        raise ValueError("Password cannot exceed 72 bytes due to bcrypt limitations.")
+
     new_user = User(
         full_name=user_data.full_name,
         email=user_data.email,
