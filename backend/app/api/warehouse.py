@@ -26,6 +26,8 @@ from app.warehouse.service import (
     get_warehouse_by_id,
     update_warehouse,
 )
+from app.schemas.explorer import SchemaResponse, TableResponse, ColumnResponse
+from app.warehouse.explorer import ExplorerService
 
 # ── Router ───────────────────────────────────────────────────────
 router = APIRouter(
@@ -305,3 +307,128 @@ def get_warehouse_execution(warehouse_id: int, session_id: str, db: DBSession, t
         )
         
     return execution
+
+# ── GET /{id}/explorer/schemas ───────────────────────────────────
+
+
+@router.get(
+    "/{warehouse_id}/explorer/schemas",
+    response_model=list[SchemaResponse],
+    summary="Get database schemas for a warehouse",
+)
+def get_explorer_schemas(warehouse_id: int, db: DBSession, token: str = Depends(oauth2_scheme)):
+    """
+    Return all non-system schemas in the warehouse database.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+        
+    try:
+        engine = WarehouseConnector.connect(warehouse)
+        schemas = ExplorerService.get_schemas(engine)
+        engine.dispose()
+        return schemas
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch schemas: {str(e)}",
+        )
+
+
+# ── GET /{id}/explorer/schemas/{schema_name}/tables ──────────────
+
+
+@router.get(
+    "/{warehouse_id}/explorer/schemas/{schema_name}/tables",
+    response_model=list[TableResponse],
+    summary="Get tables in a schema",
+)
+def get_explorer_tables(warehouse_id: int, schema_name: str, db: DBSession, token: str = Depends(oauth2_scheme)):
+    """
+    Return all tables within a specific schema, including estimated row counts.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+        
+    try:
+        engine = WarehouseConnector.connect(warehouse)
+        tables = ExplorerService.get_tables(engine, schema_name)
+        engine.dispose()
+        return tables
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch tables: {str(e)}",
+        )
+
+
+# ── GET /{id}/explorer/schemas/{schema_name}/tables/{table_name}/columns 
+
+
+@router.get(
+    "/{warehouse_id}/explorer/schemas/{schema_name}/tables/{table_name}/columns",
+    response_model=list[ColumnResponse],
+    summary="Get columns in a table",
+)
+def get_explorer_columns(warehouse_id: int, schema_name: str, table_name: str, db: DBSession, token: str = Depends(oauth2_scheme)):
+    """
+    Return all columns and metadata for a specific table.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+        
+    try:
+        engine = WarehouseConnector.connect(warehouse)
+        columns = ExplorerService.get_columns(engine, schema_name, table_name)
+        engine.dispose()
+        
+        if not columns:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Table {table_name} not found in schema {schema_name}.",
+            )
+            
+        return columns
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch columns: {str(e)}",
+        )
