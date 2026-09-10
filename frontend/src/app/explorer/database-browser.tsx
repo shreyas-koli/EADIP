@@ -19,8 +19,12 @@ import {
   Columns, 
   RefreshCw,
   AlertCircle,
-  Key
+  Key,
+  Bot
 } from "lucide-react"
+import { DataTable } from "./data-table"
+import { SqlConsole } from "./sql-console"
+import { AssistantChat } from "./assistant-chat"
 
 interface DatabaseBrowserProps {
   warehouseId: number
@@ -42,6 +46,13 @@ export function DatabaseBrowser({ warehouseId }: DatabaseBrowserProps) {
   const [expandedSchemas, setExpandedSchemas] = React.useState<Set<string>>(new Set())
   const [expandedTables, setExpandedTables] = React.useState<Set<string>>(new Set())
   const [selectedTable, setSelectedTable] = React.useState<DatabaseTable | null>(null)
+  const [activeTab, setActiveTab] = React.useState<"structure" | "data" | "sql" | "assistant">("structure")
+  const [assistantQuery, setAssistantQuery] = React.useState<string | undefined>(undefined)
+
+  const handleSendToSqlConsole = React.useCallback((query: string) => {
+    setAssistantQuery(query)
+    setActiveTab("sql")
+  }, [])
 
   const fetchSchemas = React.useCallback(async (showLoading = true) => {
     try {
@@ -261,58 +272,141 @@ export function DatabaseBrowser({ warehouseId }: DatabaseBrowserProps) {
       {/* Right Pane: Details */}
       <div className="col-span-1 md:col-span-2">
         {selectedTable ? (
-          <Card className="border-slate-800 bg-slate-900/50 max-h-[800px] flex flex-col">
-            <CardHeader className="border-b border-slate-800">
+          <Card className="border-slate-800 bg-slate-900/50 flex flex-col" style={{ maxHeight: "800px" }}>
+            {/* Header with table name and meta */}
+            <CardHeader className="border-b border-slate-800 pb-3">
               <CardTitle className="text-lg flex items-center">
                 <Table2 className="mr-2 h-5 w-5 text-blue-500" />
                 {selectedTable.name}
               </CardTitle>
-              <div className="flex gap-4 text-sm text-slate-400 mt-2">
+              <div className="flex gap-4 text-sm text-slate-400 mt-1">
                 <div>Schema: <span className="text-slate-200">{selectedTable.schema_name}</span></div>
                 <div>Rows: <span className="text-slate-200">~{selectedTable.estimated_row_count.toLocaleString()}</span></div>
                 {columnsByTable[`${selectedTable.schema_name}.${selectedTable.name}`] && (
                   <div>Columns: <span className="text-slate-200">{columnsByTable[`${selectedTable.schema_name}.${selectedTable.name}`].length}</span></div>
                 )}
               </div>
+              {/* Tab switcher */}
+              <div className="flex gap-1 mt-3">
+                <button
+                  onClick={() => setActiveTab("structure")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    activeTab === "structure"
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  }`}
+                >
+                  Structure
+                </button>
+                <button
+                  onClick={() => setActiveTab("data")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    activeTab === "data"
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  }`}
+                >
+                  Data
+                </button>
+                <button
+                  onClick={() => setActiveTab("sql")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    activeTab === "sql"
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  }`}
+                >
+                  SQL
+                </button>
+                <button
+                  onClick={() => setActiveTab("assistant")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                    activeTab === "assistant"
+                      ? "bg-purple-600 text-white"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  }`}
+                >
+                  <Bot className="h-3.5 w-3.5" />
+                  AI Assistant
+                </button>
+              </div>
             </CardHeader>
+
             <CardContent className="flex-1 overflow-y-auto p-0">
-              {loadingTables[`${selectedTable.schema_name}.${selectedTable.name}`] ? (
-                <div className="p-8 flex justify-center">
-                  <LoadingState message="Loading columns..." />
-                </div>
-              ) : (
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-slate-400 uppercase bg-slate-900 sticky top-0 border-b border-slate-800">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Column Name</th>
-                      <th className="px-4 py-3 font-medium">Data Type</th>
-                      <th className="px-4 py-3 font-medium">Nullable</th>
-                      <th className="px-4 py-3 font-medium text-right">Position</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {columnsByTable[`${selectedTable.schema_name}.${selectedTable.name}`]?.map((col) => (
-                      <tr key={col.name} className="hover:bg-slate-800/50">
-                        <td className="px-4 py-3 font-medium text-slate-200 flex items-center">
-                          {col.name}
-                          {col.is_primary_key && (
-                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                              PK
-                            </span>
-                          )}
-                          {col.foreign_key && (
-                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20" title={`References ${col.foreign_key.referred_schema}.${col.foreign_key.referred_table}`}>
-                              FK
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-emerald-400/80 font-mono text-xs">{col.data_type}</td>
-                        <td className="px-4 py-3 text-slate-400">{col.nullable ? "Yes" : "No"}</td>
-                        <td className="px-4 py-3 text-slate-500 text-right">{col.position}</td>
+              {/* Structure Tab */}
+              {activeTab === "structure" && (
+                loadingTables[`${selectedTable.schema_name}.${selectedTable.name}`] ? (
+                  <div className="p-8 flex justify-center">
+                    <LoadingState message="Loading columns..." />
+                  </div>
+                ) : (
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-slate-400 uppercase bg-slate-900 sticky top-0 border-b border-slate-800">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Column Name</th>
+                        <th className="px-4 py-3 font-medium">Data Type</th>
+                        <th className="px-4 py-3 font-medium">Nullable</th>
+                        <th className="px-4 py-3 font-medium text-right">Position</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50">
+                      {columnsByTable[`${selectedTable.schema_name}.${selectedTable.name}`]?.map((col) => (
+                        <tr key={col.name} className="hover:bg-slate-800/50">
+                          <td className="px-4 py-3 font-medium text-slate-200 flex items-center">
+                            {col.name}
+                            {col.is_primary_key && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                PK
+                              </span>
+                            )}
+                            {col.foreign_key && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20" title={`References ${col.foreign_key.referred_schema}.${col.foreign_key.referred_table}`}>
+                                FK
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-emerald-400/80 font-mono text-xs">{col.data_type}</td>
+                          <td className="px-4 py-3 text-slate-400">{col.nullable ? "Yes" : "No"}</td>
+                          <td className="px-4 py-3 text-slate-500 text-right">{col.position}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              )}
+
+              {/* Data Tab */}
+              {activeTab === "data" && (
+                <div className="p-4">
+                  <DataTable
+                    key={`${selectedTable.schema_name}.${selectedTable.name}`}
+                    warehouseId={warehouseId}
+                    schemaName={selectedTable.schema_name}
+                    tableName={selectedTable.name}
+                  />
+                </div>
+              )}
+
+              {/* SQL Tab */}
+              {activeTab === "sql" && (
+                <div className="p-4 overflow-y-auto">
+                  <SqlConsole
+                    warehouseId={warehouseId}
+                    selectedTable={selectedTable}
+                    initialQuery={assistantQuery}
+                  />
+                </div>
+              )}
+
+              {/* Assistant Tab */}
+              {activeTab === "assistant" && (
+                <div className="p-4 overflow-y-auto">
+                  <AssistantChat
+                    warehouseId={warehouseId}
+                    selectedTable={selectedTable}
+                    onSendToSqlConsole={handleSendToSqlConsole}
+                  />
+                </div>
               )}
             </CardContent>
           </Card>
@@ -320,7 +414,7 @@ export function DatabaseBrowser({ warehouseId }: DatabaseBrowserProps) {
           <Card className="border-slate-800 bg-slate-900/50 h-full border-dashed flex items-center justify-center min-h-[300px]">
             <div className="text-center text-slate-500">
               <Table2 className="h-12 w-12 mx-auto mb-4 opacity-20" />
-              <p>Select a table from the sidebar to view its structure</p>
+              <p>Select a table from the sidebar to view its structure, data, or run SQL</p>
             </div>
           </Card>
         )}

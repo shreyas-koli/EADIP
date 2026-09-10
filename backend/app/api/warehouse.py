@@ -26,8 +26,12 @@ from app.warehouse.service import (
     get_warehouse_by_id,
     update_warehouse,
 )
-from app.schemas.explorer import SchemaResponse, TableResponse, ColumnResponse
-from app.warehouse.explorer import ExplorerService
+from app.schemas.explorer import SchemaResponse, TableResponse, ColumnResponse, RowDataResponse, QueryRequest, QueryResponse
+from app.warehouse.explorer import ExplorerService, DEFAULT_ROW_LIMIT, MAX_ROW_LIMIT
+from app.warehouse.sql_validator import SQLValidationError, validate_sql
+from app.schemas.assistant import AssistantRequest, AssistantResponse, ProvidersResponse
+from app.services.assistant_service import process_assistant_chat
+from app.services.provider_availability import get_provider_availability
 
 # ── Router ───────────────────────────────────────────────────────
 router = APIRouter(
@@ -431,4 +435,241 @@ def get_explorer_columns(warehouse_id: int, schema_name: str, table_name: str, d
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch columns: {str(e)}",
+        )
+
+
+# ── GET /{id}/explorer/schemas/{schema_name}/tables/{table_name}/rows ──
+
+
+@router.get(
+    "/{warehouse_id}/explorer/schemas/{schema_name}/tables/{table_name}/rows",
+    response_model=RowDataResponse,
+    summary="Get paginated row data from a table",
+)
+def get_explorer_rows(
+    warehouse_id: int,
+    schema_name: str,
+    table_name: str,
+    db: DBSession,
+    token: str = Depends(oauth2_scheme),
+    limit: int = DEFAULT_ROW_LIMIT,
+    offset: int = 0,
+):
+    """
+    Return a paginated page of rows from the specified table.
+
+    - limit is clamped server-side to MAX_ROW_LIMIT (100).
+    - offset must be >= 0.
+    - Schema and table names are double-quoted to prevent SQL injection.
+    - A 30-second statement timeout is applied per query.
+    - No credentials are included in the response.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+
+    # Validate limit/offset
+    if limit < 1 or limit > MAX_ROW_LIMIT:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"limit must be between 1 and {MAX_ROW_LIMIT}.",
+        )
+    if offset < 0:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="offset must be >= 0.",
+        )
+
+    try:
+        engine = WarehouseConnector.connect(warehouse)
+        data = ExplorerService.get_rows(engine, schema_name, table_name, limit=limit, offset=offset)
+        engine.dispose()
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch rows: {str(e)}",
+        )
+
+
+# ── POST /{id}/explorer/query ─────────────────────────────────────────────────
+
+
+@router.post(
+    "/{warehouse_id}/explorer/query",
+    response_model=QueryResponse,
+    summary="Execute a read-only SQL query against a warehouse",
+)
+def execute_explorer_query(
+    warehouse_id: int,
+    body: QueryRequest,
+    db: DBSession,
+    token: str = Depends(oauth2_scheme),
+):
+    """
+    Execute a single, read-only SQL statement against the specified warehouse.
+
+    Security:
+    - Requires valid JWT token (authenticated user).
+    - Warehouse must be owned by the authenticated user.
+    - SQL is validated by sql_validator (blocks INSERT/UPDATE/DELETE/DDL/TCL).
+    - Query runs inside a READ ONLY PostgreSQL transaction (defence-in-depth).
+    - A 30-second server-side statement timeout is applied.
+    - Results are capped at 1,000 rows; 'truncated' indicates overflow.
+    - No credentials are included in any response.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+
+    # ── SQL Validation (Layer 1) ────────────────────────────────────────────
+    try:
+        validated_sql = validate_sql(body.sql)
+    except SQLValidationError as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    # ── Execute (Layers 2-4 inside execute_query) ───────────────────────────
+    try:
+        engine = WarehouseConnector.connect(warehouse)
+        result = ExplorerService.execute_query(engine, validated_sql)
+        engine.dispose()
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        # Surface useful PostgreSQL errors without leaking credentials
+        if "statement timeout" in error_msg.lower() or "canceling statement" in error_msg.lower():
+            raise HTTPException(
+                status_code=http_status.HTTP_408_REQUEST_TIMEOUT,
+                detail="Query exceeded the 30-second time limit and was cancelled.",
+            )
+        if "read-only transaction" in error_msg.lower():
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Only read-only SQL queries are allowed.",
+            )
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Query failed: {error_msg}",
+        )
+
+
+import logging
+logger = logging.getLogger(__name__)
+
+# ── GET /{id}/explorer/assistant/providers ────────────────────────────────────
+
+@router.get(
+    "/{warehouse_id}/explorer/assistant/providers",
+    response_model=ProvidersResponse,
+    summary="Get AI provider availability status",
+)
+def get_assistant_providers(
+    warehouse_id: int,
+    db: DBSession,
+    token: str = Depends(oauth2_scheme),
+):
+    """
+    Return the availability status of all configured AI providers.
+
+    Requires authentication and warehouse ownership validation.
+    Never exposes API keys, secrets, or credentials in the response.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+
+    try:
+        return get_provider_availability()
+    except Exception as e:
+        logger.error(f"Provider availability check failed: {e}")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve provider status.",
+        )
+
+
+# ── POST /{id}/explorer/assistant/chat ────────────────────────────────────────
+
+@router.post(
+    "/{warehouse_id}/explorer/assistant/chat",
+    response_model=AssistantResponse,
+    summary="Chat with the AI assistant about the warehouse",
+)
+def assistant_chat(
+    warehouse_id: int,
+    body: AssistantRequest,
+    db: DBSession,
+    token: str = Depends(oauth2_scheme),
+):
+    """
+    Interact with the Warehouse AI Assistant.
+    """
+    user = get_current_user(db, token)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    warehouse = get_warehouse_by_id(db, warehouse_id, user)
+    if warehouse is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=f"Warehouse with id {warehouse_id} not found.",
+        )
+
+    try:
+        engine = WarehouseConnector.connect(warehouse)
+        result = process_assistant_chat(engine, body)
+        engine.dispose()
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Issue 3: Prevent Raw Exception Leak
+        logger.error(f"AI Assistant Error for warehouse {warehouse_id}: {str(e)}")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process AI request.",
         )

@@ -22,3 +22,5 @@ typing-extensions
 
 greenlet
 psutil
+
+sqlparse

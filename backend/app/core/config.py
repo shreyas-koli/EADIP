@@ -42,6 +42,17 @@ class Settings(BaseSettings):
 
     # ── Security / Encryption ────────────────────────────────────
     ENCRYPTION_KEY: str
+    
+    # ── External APIs ────────────────────────────────────────────
+    DEFAULT_AI_PROVIDER: str = "openai"
+    OPENAI_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-3.8-flash"
+    
+    # ── Local AI (Ollama) ────────────────────────────────────────
+    OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
+    OLLAMA_MODEL: str = "llama3.2"
+    OLLAMA_TIMEOUT_SECONDS: float = 120.0
 
     # ── Database ─────────────────────────────────────────────────
     DEBUG: bool = True
