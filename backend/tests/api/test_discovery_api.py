@@ -33,8 +33,9 @@ def override_get_db():
 client = TestClient(app)
 
 @pytest.fixture(scope="function")
-def db_session():
+def db_session(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
+    monkeypatch.setattr("app.database.session.SessionLocal", TestingSessionLocal)
     
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()

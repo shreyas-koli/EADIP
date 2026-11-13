@@ -24,6 +24,9 @@ def test_metadata_discovery_graph():
         "security",
         "data_quality",
     }
+    assert task_map["explainability"].dependencies == ["recommendation"]
+    assert task_map["reporting"].dependencies == ["recommendation"]
+    assert task_map["automation"].dependencies == ["recommendation"]
 
 def test_no_circular_dependencies():
     """
@@ -51,7 +54,7 @@ def test_explicit_context_propagation():
     context = SharedContext()
     tasks = factory.build_metadata_discovery(warehouse, context)
     
-    task_names = {"metadata", "statistics", "monitoring", "security", "data_quality", "recommendation"}
+    task_names = {"metadata", "statistics", "monitoring", "security", "data_quality", "recommendation", "explainability", "reporting", "automation"}
     
     for task in tasks:
         assert task.name in task_names

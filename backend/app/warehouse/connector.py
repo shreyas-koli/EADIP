@@ -67,7 +67,10 @@ class WarehouseConnector:
         try:
             plaintext_password = decrypt_credential(warehouse.encrypted_password)
         except ValueError as e:
-            raise ConnectionError("Failed to decrypt warehouse credentials.") from e
+            err_cat = str(e)
+            import logging
+            logging.getLogger(__name__).error(f"[DIAGNOSTIC] Credential decryption failed for warehouse ID {warehouse.id}: {err_cat}")
+            raise ConnectionError(f"Failed to decrypt warehouse credentials ({err_cat}). Please update credentials in Warehouse Settings.") from e
 
         url = URL.create(
             drivername=driver,

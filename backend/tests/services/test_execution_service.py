@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database.base import Base
+from app.models.user import User  # noqa: F401
 from app.models.warehouse import Warehouse
 from app.models.execution import DiscoverySession, AgentExecution
 from app.services.execution_service import ExecutionService
@@ -574,3 +575,82 @@ def test_service_filter_and_pagination_together(db_session: Session):
     assert len(result_p2["items"]) == 3
     assert all(item.status == "COMPLETED" for item in result_p2["items"])
     assert result_p2["total"] == 8
+
+
+def test_outcome_sync_failure_rollback_preserves_discovery_session(db_session: Session, monkeypatch):
+    """
+    Verify that if RecommendationOutcomeService.sync_all_session_outcomes raises a DB or runtime exception,
+    db.rollback() is invoked so that the session is not left in an aborted transaction state,
+    and DiscoverySessionResponse can safely serialize lazy relationships (agent_executions).
+    """
+    from unittest.mock import MagicMock
+    from app.schemas.execution import DiscoverySessionResponse
+    from app.services.recommendation_outcome_service import RecommendationOutcomeService
+
+    warehouse = db_session.query(Warehouse).first()
+    session_id = f"test_rollback_{uuid.uuid4()}"
+
+    def mock_sync_failure(*args, **kwargs):
+        # Force a database exception simulation
+        raise RuntimeError("Simulated DB exception during outcome sync")
+
+    monkeypatch.setattr(RecommendationOutcomeService, "sync_all_session_outcomes", mock_sync_failure)
+
+    execution_summary = {
+        "session_id": session_id,
+        "total_execution_ms": 120.0,
+        "completed": ["metadata", "schema"],
+        "failed": [],
+        "skipped": [],
+        "agent_execution": [
+            {
+                "agent": "metadata",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "duration_ms": 60.0,
+                "wave": 1,
+            },
+            {
+                "agent": "schema",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "duration_ms": 60.0,
+                "wave": 1,
+            },
+        ],
+        "agent_results": {
+            "automation": {
+                "action_plans": [{"action_id": "act_1", "action_type": "CREATE_INDEX"}]
+            }
+        },
+    }
+
+    session_obj = ExecutionService.persist_execution(db_session, warehouse.id, execution_summary)
+
+    assert session_obj is not None
+    assert session_obj.session_id == session_id
+
+    # Verify serialization and lazy relationship loading succeeds cleanly after rollback
+    response = DiscoverySessionResponse.model_validate(session_obj)
+    assert response.session_id == session_id
+    assert len(response.agent_executions) == 2
+
+
+def test_transaction_isolation_after_failed_db_operation(db_session: Session):
+    """
+    Verify that executing a failed DB query followed by db.rollback() restores the session
+    to a healthy state where subsequent DB queries execute successfully without transaction abortion errors.
+    """
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy import text
+
+    # Trigger a database operation that fails
+    try:
+        db_session.execute(text("SELECT * FROM non_existent_table_xyz_123"))
+    except Exception:
+        db_session.rollback()
+
+    # Verify new DB operation on the same session succeeds cleanly
+    sessions = db_session.query(DiscoverySession).all()
+    assert isinstance(sessions, list)
+

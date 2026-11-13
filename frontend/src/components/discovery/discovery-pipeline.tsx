@@ -100,7 +100,7 @@ export function DiscoveryPipeline({ executions = [], isRunning, events = [], isI
       </div>
 
       {/* Wave 3: Recommendation */}
-      <div className="relative flex justify-center z-10 mt-4">
+      <div className="relative flex justify-center z-10 mt-4 mb-16">
         <AgentExecutionCard 
           name="Recommendation Agent" 
           execution={getExecution("recommendation")}
@@ -109,6 +109,52 @@ export function DiscoveryPipeline({ executions = [], isRunning, events = [], isI
           isInitializing={isInitializing}
           isReplaying={isReplaying}
         />
+      </div>
+
+      {/* Connector: Wave 3 → Wave 4 */}
+      {/* Center vertical stem down from Recommendation */}
+      <div className="absolute top-[650px] h-6 w-px bg-slate-700 hidden sm:block opacity-60"></div>
+      {/* Horizontal bar splitting to Wave 4 cards */}
+      <div className="absolute top-[674px] w-[500px] border-t border-slate-700 hidden sm:block opacity-50"></div>
+      {/* Left drop to Explainability */}
+      <div className="absolute top-[674px] left-[calc(50%-250px)] h-8 w-px bg-slate-700 hidden sm:block opacity-50"></div>
+      {/* Center drop to Reporting */}
+      <div className="absolute top-[674px] h-8 w-px bg-slate-700 hidden sm:block opacity-50"></div>
+      {/* Right drop to Automation */}
+      <div className="absolute top-[674px] right-[calc(50%-250px)] h-8 w-px bg-slate-700 hidden sm:block opacity-50"></div>
+
+      {/* Wave 4: Explainability, Reporting & Automation (3 parallel) */}
+      <div className="relative flex justify-center gap-8 sm:gap-16 mt-4 w-full">
+        <div className="z-10">
+          <AgentExecutionCard 
+            name="Explainability Agent" 
+            execution={getExecution("explainability")}
+            isActive={isRunning} 
+            events={events}
+            isInitializing={isInitializing}
+            isReplaying={isReplaying}
+          />
+        </div>
+        <div className="z-10">
+          <AgentExecutionCard 
+            name="Reporting Agent" 
+            execution={getExecution("reporting")}
+            isActive={isRunning} 
+            events={events}
+            isInitializing={isInitializing}
+            isReplaying={isReplaying}
+          />
+        </div>
+        <div className="z-10">
+          <AgentExecutionCard 
+            name="Automation Agent" 
+            execution={getExecution("automation")}
+            isActive={isRunning} 
+            events={events}
+            isInitializing={isInitializing}
+            isReplaying={isReplaying}
+          />
+        </div>
       </div>
     </div>
   )

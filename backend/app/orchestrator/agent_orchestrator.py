@@ -392,7 +392,7 @@ class AgentOrchestrator:
             end_iso = datetime.now(timezone.utc).isoformat()
             duration_ms = (end_ns - start_ns) / 1_000_000
 
-            self._context.set_agent_status(task.name, status)
+            self._context.set_agent_status(task.name, status, error=error_msg)
             self._context.add_execution_history(
                 agent=task.name,
                 started_at=start_iso,
@@ -401,6 +401,7 @@ class AgentOrchestrator:
                 status=status,
                 thread=threading.current_thread().name,
                 wave=wave_id,
+                error=error_msg,
             )
             self._context.add_execution_log(
                 f"Agent '{task.name}' finished — "

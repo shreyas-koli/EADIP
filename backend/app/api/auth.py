@@ -27,6 +27,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 # ── POST /auth/register ─────────────────────────────────────────
 
 
+from sqlalchemy.exc import OperationalError
+
 @router.post(
     "/register",
     response_model=UserResponse,
@@ -49,6 +51,11 @@ def register(user_data: UserRegister, db: DBSession):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
+    except OperationalError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection failure. Please verify your local PostgreSQL password in backend/.env.",
+        )
 
     return user
 
@@ -68,7 +75,13 @@ def login(credentials: UserLogin, db: DBSession):
     - Returns a signed JWT on success.
     - Returns **401** if the credentials are invalid.
     """
-    user = authenticate_user(db, credentials.email, credentials.password)
+    try:
+        user = authenticate_user(db, credentials.email, credentials.password)
+    except OperationalError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection failure. Please verify your local PostgreSQL password in backend/.env.",
+        )
 
     if user is None:
         raise HTTPException(

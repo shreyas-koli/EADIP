@@ -81,11 +81,40 @@ class SharedContext:
         statistics = ctx.get_agent_result("statistics")
     """
 
+    _global_listeners: set[Callable[[dict[str, Any]], None]] = set()
+
+    @classmethod
+    def register_listener(cls, callback: Callable[[dict[str, Any]], None]) -> None:
+        """Register a global telemetry / SSE event listener callback."""
+        cls._global_listeners.add(callback)
+
+    @classmethod
+    def unregister_listener(cls, callback: Callable[[dict[str, Any]], None]) -> None:
+        """Unregister a global telemetry / SSE event listener callback."""
+        cls._global_listeners.discard(callback)
+
+    @classmethod
+    def broadcast_event(cls, event_data: dict[str, Any]) -> None:
+        """Broadcast a telemetry / SSE event to all registered global listeners."""
+        if "timestamp" not in event_data:
+            event_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+
+        import logging
+        logger = logging.getLogger(__name__)
+
+        for cb in list(cls._global_listeners):
+            try:
+                cb(event_data)
+            except Exception as e:
+                logger.warning(f"Global event listener callback failed: {e}")
+
     def __init__(self, event_callback: Callable[[dict[str, Any]], None] | None = None) -> None:
         """Initialise the shared context store (non-singleton)."""
         self._rlock = threading.RLock()
         
         self._event_callback = event_callback
+        if event_callback:
+            SharedContext.register_listener(event_callback)
         self._session_id: str = str(uuid.uuid4())
         self._current_warehouse: dict[str, Any] | None = None
         self._agent_results: dict[str, Any] = {}
@@ -95,15 +124,18 @@ class SharedContext:
 
     def _emit(self, event_data: dict[str, Any]) -> None:
         """Internal helper to emit an event if a callback is registered."""
+        if "timestamp" not in event_data:
+            event_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+
         if self._event_callback:
             try:
-                # Add timestamp to all events
-                if "timestamp" not in event_data:
-                    event_data["timestamp"] = datetime.now(timezone.utc).isoformat()
                 self._event_callback(event_data)
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning(f"Event callback failed: {e}")
+
+        # Broadcast to all registered global telemetry listeners
+        SharedContext.broadcast_event(event_data)
 
     # ── Session ID ───────────────────────────────────────────────
 
@@ -303,6 +335,7 @@ class SharedContext:
         status: AgentStatus | None = None,
         thread: str | None = None,
         wave: int | None = None,
+        error: str | None = None,
         # Legacy kwargs for backward compatibility
         start_time: str | None = None,
         end_time: str | None = None,
@@ -310,23 +343,6 @@ class SharedContext:
     ) -> None:
         """
         Record a completed agent execution.
-
-        Parameters
-        ──────────
-        agent      : str
-            Name of the agent (e.g. ``"metadata_agent"``).
-        started_at : str | None
-            ISO-8601 UTC timestamp when the agent started.
-        finished_at: str | None
-            ISO-8601 UTC timestamp when the agent finished.
-        duration_ms: int | None
-            Execution duration in milliseconds.
-        status     : AgentStatus | None
-            Final outcome (``COMPLETED`` or ``FAILED``).
-        thread     : str | None
-            Name of the executing thread.
-        wave       : int | None
-            The execution wave ID.
         """
         # Resolve values (supporting legacy fields if new ones are omitted)
         final_started = started_at or start_time or ""
@@ -347,32 +363,21 @@ class SharedContext:
                 "status": status.value if status else "UNKNOWN",
                 "thread": thread or "unknown",
                 "wave": wave if wave is not None else 0,
+                "error": error,
             })
 
     def get_execution_history(self) -> list[dict[str, Any]]:
         """
         Return a copy of all execution history entries.
-
-        Returns
-        ───────
-        list[dict[str, Any]]
         """
         with self._rlock:
             return copy.deepcopy(self._execution_history)
 
     # ── Agent status ─────────────────────────────────────────────
 
-    def set_agent_status(self, agent: str, status: AgentStatus) -> None:
+    def set_agent_status(self, agent: str, status: AgentStatus, error: str | None = None) -> None:
         """
         Update the lifecycle status of a specific agent.
-
-        Parameters
-        ──────────
-        agent  : str
-            Agent identifier (e.g. ``"metadata_agent"``).
-        status : AgentStatus
-            The new status (``WAITING``, ``RUNNING``, ``COMPLETED``,
-            ``FAILED``).
         """
         with self._rlock:
             self._agent_status[agent] = status
@@ -388,10 +393,13 @@ class SharedContext:
                 event_type = "agent_skipped"
                 
             if event_type:
-                self._emit({
+                payload: dict[str, Any] = {
                     "event": event_type,
-                    "agent": agent
-                })
+                    "agent": agent,
+                }
+                if error:
+                    payload["error"] = error
+                self._emit(payload)
 
     def get_agent_status(self, agent: str) -> AgentStatus | None:
         """

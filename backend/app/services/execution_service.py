@@ -76,14 +76,31 @@ class ExecutionService:
         else:
             finished_at = datetime.now(timezone.utc)
 
-        # Retrieve recommendations
+        # Retrieve recommendations, explainability, reporting, and automation
         agent_results = execution_summary.get("agent_results", {})
         recommendations = agent_results.get("recommendation")
+        explainability = agent_results.get("explainability")
+        reporting = agent_results.get("reporting")
+        automation = agent_results.get("automation")
 
         if recommendations:
             from app.recommendation.formatter import RecommendationFormatter
             formatter = RecommendationFormatter()
             recommendations = formatter.format(recommendations)
+            if explainability:
+                recommendations["explainability"] = explainability
+            if reporting:
+                recommendations["reporting"] = reporting
+            if automation:
+                recommendations["automation"] = automation
+        elif explainability or reporting or automation:
+            recommendations = {}
+            if explainability:
+                recommendations["explainability"] = explainability
+            if reporting:
+                recommendations["reporting"] = reporting
+            if automation:
+                recommendations["automation"] = automation
 
         # Create session
         discovery_session = DiscoverySession(
@@ -145,7 +162,19 @@ class ExecutionService:
             db.commit()
             logger.info(f"Successfully persisted discovery session {session_id} with {len(agent_executions)} agent executions.")
             db.refresh(discovery_session)
-            
+
+            # Sync R1 Recommendation Outcome History for initial PROPOSED recommendations / action plans
+            from app.services.recommendation_outcome_service import RecommendationOutcomeService
+            try:
+                RecommendationOutcomeService.sync_all_session_outcomes(db, warehouse_id, session_id)
+            except Exception as exc:
+                db.rollback()
+                logger.warning(f"Failed to sync initial recommendation outcomes for session '{session_id}': {exc}")
+
+            try:
+                db.refresh(discovery_session)
+            except Exception:
+                pass
             return discovery_session
 
         except Exception as exc:

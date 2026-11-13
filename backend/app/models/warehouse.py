@@ -3,7 +3,7 @@ Warehouse ORM model.
 
 Represents a registered external data-warehouse connection
 (PostgreSQL, MySQL, SQL Server, etc.) whose metadata and schema
-the EADIP platform can inspect and analyse.
+the AetherArchive platform can inspect and analyse.
 """
 
 from datetime import datetime

@@ -2,7 +2,7 @@
 JWT access-token utilities.
 
 Provides helpers to **create** and **decode** JSON Web Tokens used for
-stateless authentication across the EADIP platform.  All cryptographic
+stateless authentication across the AetherArchive platform.  All cryptographic
 parameters (secret, algorithm, TTL) are read from the central
 application settings so they stay consistent and easy to rotate.
 """

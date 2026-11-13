@@ -6,7 +6,15 @@ import { PageContainer } from "@/components/layout/page-container"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingState } from "@/components/ui/loading-state"
-import { Play, Activity, History, AlertCircle } from "lucide-react"
+import { 
+  Play, 
+  Activity, 
+  History, 
+  AlertCircle, 
+  Cpu, 
+  Radio, 
+  Layers
+} from "lucide-react"
 
 import { warehousesApi, Warehouse } from "@/lib/api/warehouses"
 import { discoveryApi, DiscoverySession } from "@/lib/api/discovery"
@@ -29,7 +37,7 @@ export default function DiscoveryPage() {
   
   // Streaming state
   const [streamEvents, setStreamEvents] = React.useState<Record<string, unknown>[]>([])
-  const [isConsoleVisible, setIsConsoleVisible] = React.useState(false)
+  const [isConsoleVisible, setIsConsoleVisible] = React.useState(true)
   
   // Initialization state
   const [isInitializing, setIsInitializing] = React.useState(false)
@@ -47,8 +55,11 @@ export default function DiscoveryPage() {
       try {
         const data = await warehousesApi.list()
         if (mounted) {
-          const active = data.filter(w => w.is_active)
+          const active = data.filter((w) => w.is_active)
           setWarehouses(active)
+          if (active.length > 0 && !selectedWarehouseId) {
+            setSelectedWarehouseId(active[0].id)
+          }
         }
       } catch {
         if (mounted) {
@@ -60,7 +71,7 @@ export default function DiscoveryPage() {
     }
     fetchWarehouses()
     return () => { mounted = false }
-  }, [])
+  }, [selectedWarehouseId])
 
   const handleRunDiscovery = async () => {
     if (!selectedWarehouseId) return
@@ -80,7 +91,7 @@ export default function DiscoveryPage() {
       await discoveryApi.executeStream(
         { warehouse_id: selectedWarehouseId },
         (event) => {
-          setStreamEvents(prev => [...prev, event as Record<string, unknown>])
+          setStreamEvents((prev) => [...prev, event as Record<string, unknown>])
           if (event.event === "discovery_completed") {
             setResultSession(event.session as DiscoverySession)
             if (event.monitoring) {
@@ -100,37 +111,51 @@ export default function DiscoveryPage() {
     }
   }
 
-  const selectedWarehouseName = warehouses.find(w => w.id === selectedWarehouseId)?.name || "Unknown"
+  const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId)
+  const selectedWarehouseName = selectedWarehouse?.name || "Unknown"
 
   if (isFetchingWarehouses) {
     return (
-      <PageContainer title="Discovery">
+      <PageContainer title="Autonomous Discovery">
         <div className="flex h-[600px] items-center justify-center">
-          <LoadingState message="Loading discovery engine..." />
+          <LoadingState message="Initializing autonomous agent engine..." />
         </div>
       </PageContainer>
     )
   }
 
   return (
-    <PageContainer title="Discovery">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Run Discovery</h2>
-          <p className="text-slate-400">Execute multi-agent intelligence on your connected data warehouses.</p>
+    <PageContainer title="Autonomous Discovery">
+      {/* Header Banner */}
+      <div className="relative mb-8 overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950/40 p-6 shadow-2xl backdrop-blur-xl">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Cpu className="h-4 w-4 text-cyan-400" />
+              <span className="text-[11px] font-bold uppercase tracking-widest text-cyan-400">
+                Multi-Agent Intelligence Pipeline
+              </span>
+            </div>
+            <h2 className="text-2xl font-extrabold tracking-tight text-white">
+              Autonomous Discovery & Optimization
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Execute parallel multi-wave agents to profile schema metadata, statistical distributions, query bottlenecks, and generate deterministic recommendations.
+            </p>
+          </div>
+          {resultSession && (
+            <Link href={`/history?session=${resultSession.session_id}`}>
+              <Button variant="outline" className="border-slate-700 bg-slate-900/80 hover:bg-slate-800 text-slate-200 gap-1.5 text-xs">
+                <History className="h-4 w-4 text-cyan-400" /> View in Audit Timeline
+              </Button>
+            </Link>
+          )}
         </div>
-        {resultSession && (
-          <Link href={`/history?session=${resultSession.session_id}`}>
-            <Button variant="outline" className="w-full sm:w-auto">
-              <History className="mr-2 h-4 w-4" /> View History
-            </Button>
-          </Link>
-        )}
       </div>
 
       <div className="space-y-8">
-        {/* Controls */}
-        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        {/* Warehouse Selection & Launch Panel */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-6 shadow-xl backdrop-blur-xl">
           <WarehouseSelector 
             warehouses={warehouses}
             selectedId={selectedWarehouseId}
@@ -138,29 +163,38 @@ export default function DiscoveryPage() {
             disabled={isRunning}
           />
           
-          <div className="mt-6 pt-6 border-t border-slate-800 flex justify-end">
+          <div className="mt-6 pt-5 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <Radio className={`h-4 w-4 ${isRunning ? "text-cyan-400 animate-pulse" : "text-emerald-400"}`} />
+              <span>Pipeline: <strong>Wave 1 (Ingest)</strong> → <strong>Wave 2 (Security & Quality)</strong> → <strong>Wave 3 (Supervisor)</strong></span>
+            </div>
+
             <Button 
               onClick={handleRunDiscovery} 
               disabled={!selectedWarehouseId || isRunning}
-              className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
+              className={`w-full sm:w-auto font-semibold px-6 py-2.5 text-sm shadow-xl transition-all ${
+                isRunning 
+                  ? "bg-slate-800 text-slate-300 border border-slate-700" 
+                  : "bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-blue-500/20"
+              }`}
               size="lg"
             >
               {isRunning ? (
                 <>
-                  <Activity className="mr-2 h-5 w-5 animate-pulse" /> Running Intelligence...
+                  <Activity className="mr-2 h-4 w-4 text-cyan-400 animate-spin" /> Agents Executing…
                 </>
               ) : (
                 <>
-                  <Play className="mr-2 h-5 w-5 fill-current" /> Execute Discovery
+                  <Play className="mr-2 h-4 w-4 fill-current text-white" /> Execute Discovery Pipeline
                 </>
               )}
             </Button>
           </div>
         </div>
 
-        {/* Live Console */}
-        {isConsoleVisible && (
-          <div className="mb-8">
+        {/* Live SSE Stream Console */}
+        {isConsoleVisible && (streamEvents.length > 0 || isRunning) && (
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/90 shadow-2xl overflow-hidden">
             <DiscoveryConsole 
               warehouseName={selectedWarehouseName}
               isComplete={!isRunning && !!resultSession}
@@ -175,15 +209,24 @@ export default function DiscoveryPage() {
           </div>
         )}
 
-        {/* Pipeline */}
+        {/* Multi-Agent DAG Visual Pipeline */}
         {(isRunning || resultSession) && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 overflow-hidden mb-8">
-            <div className="text-center mb-8">
-              <h3 className="text-lg font-semibold text-slate-200">Multi-Agent Execution Pipeline</h3>
-              <p className="text-sm text-slate-400">Directed Acyclic Graph (DAG) progression</p>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/90 shadow-2xl p-6 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4 mb-6">
+              <div className="flex items-center gap-2">
+                <Layers className="h-5 w-5 text-cyan-400" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-100">Multi-Agent Execution Pipeline</h3>
+                  <p className="text-xs text-slate-400">Directed Acyclic Graph (DAG) state progression</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-cyan-400 border border-cyan-800/30">
+                3 Waves • 6 Specialized Agents
+              </span>
             </div>
+
             <div className="overflow-x-auto pb-4">
-              <div className="min-w-[600px]">
+              <div className="min-w-[750px]">
                 <DiscoveryPipeline 
                   executions={resultSession?.agent_executions} 
                   isRunning={isRunning} 
@@ -198,25 +241,27 @@ export default function DiscoveryPage() {
 
         {/* Errors */}
         {error && (
-          <EmptyState
-            icon={AlertCircle}
-            title="Execution Failed"
-            description={error}
-          />
+          <div className="rounded-2xl border border-rose-800/60 bg-rose-950/30 p-6 shadow-xl">
+            <EmptyState
+              icon={AlertCircle}
+              title="Execution Failed"
+              description={error}
+            />
+          </div>
         )}
 
-        {/* Empty State */}
+        {/* Ready Placeholder */}
         {!isRunning && !resultSession && !error && (
-           <div className="p-8 rounded-xl bg-slate-900/30 border border-slate-800 border-dashed text-center h-full flex flex-col items-center justify-center min-h-[300px]">
-              <Activity className="h-10 w-10 text-slate-700 mb-4" />
-              <h3 className="text-lg font-medium text-slate-400 mb-2">Ready to Execute</h3>
-              <p className="text-sm text-slate-500 max-w-[200px] mx-auto">
-                Select a warehouse and click Execute Discovery to begin.
-              </p>
-           </div>
+          <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/20 p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
+            <Activity className="h-12 w-12 text-slate-700 mb-3" />
+            <h3 className="text-base font-semibold text-slate-300">Ready to Execute</h3>
+            <p className="text-xs text-slate-500 max-w-sm mt-1">
+              Select a target warehouse above and launch the autonomous multi-agent discovery pipeline to analyze performance, schema integrity, and action recommendations.
+            </p>
+          </div>
         )}
 
-        {/* Results */}
+        {/* Completed Results with Controlled Actions & Audit Panel */}
         {resultSession && (
           <DiscoveryResult 
             session={resultSession} 

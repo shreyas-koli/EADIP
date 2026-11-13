@@ -1,5 +1,5 @@
 """
-EADIP — Application entry point.
+AetherArchive — Application entry point.
 
 Bootstraps the FastAPI application, registers routers, and defines
 top-level health / info endpoints.
@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
 from app.api.warehouse import router as warehouse_router
 from app.api.discovery import router as discovery_router
+from app.api.automation import router as automation_router
+from app.api.recommendation_history import router as recommendation_history_router
 from app.core.config import settings
 
 
@@ -39,7 +41,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌  Failed to initialize database: {e}")
         
-    logger.info("🚀  EADIP Backend Started Successfully")
+    logger.info("🚀  AetherArchive Backend Started Successfully")
     yield
     # ── Shutdown (add cleanup logic here if needed) ──────────────
 
@@ -57,12 +59,28 @@ app = FastAPI(
 
 # Configure CORS for frontend communication
 if settings.BACKEND_CORS_ORIGINS:
+    origins = [str(origin).rstrip("/") for origin in settings.BACKEND_CORS_ORIGINS]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.BACKEND_CORS_ORIGINS,
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+
+# ── Exception Handlers ───────────────────────────────────────────
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
+
+@app.exception_handler(OperationalError)
+async def db_operational_error_handler(request: Request, exc: OperationalError):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database connection failure. Please check your local PostgreSQL service status and password in backend/.env."
+        },
     )
 
 # ── Routers ──────────────────────────────────────────────────────
@@ -70,6 +88,8 @@ if settings.BACKEND_CORS_ORIGINS:
 app.include_router(auth_router)
 app.include_router(warehouse_router)
 app.include_router(discovery_router)
+app.include_router(automation_router)
+app.include_router(recommendation_history_router)
 
 
 # ── Root endpoints ───────────────────────────────────────────────
@@ -79,7 +99,7 @@ app.include_router(discovery_router)
 def root():
     """Welcome endpoint — confirms the API is reachable."""
     return {
-        "message": "Welcome to EADIP 🚀",
+        "message": "Welcome to AetherArchive 🚀",
     }
 
 

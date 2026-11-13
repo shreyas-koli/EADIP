@@ -4,7 +4,7 @@ import * as React from "react"
 import { AgentExecution } from "@/lib/api/discovery"
 import { AgentStatus } from "@/components/agent/agent-components"
 import { Card } from "@/components/ui/card"
-import { Shield, FileText, BarChart, CheckSquare, Search, Lightbulb, Loader2, CheckCircle2, XCircle, Monitor } from "lucide-react"
+import { Shield, FileText, BarChart, CheckSquare, Search, Lightbulb, Loader2, CheckCircle2, XCircle, Monitor, HelpCircle, ClipboardList, Cog } from "lucide-react"
 
 interface AgentExecutionCardProps {
   name: string
@@ -61,6 +61,8 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
       activityLogs = ["Waiting for Wave 1 dependencies..."]
     } else if (backendName === "recommendation") {
       activityLogs = ["Waiting for upstream agents..."]
+    } else if (backendName === "explainability" || backendName === "reporting" || backendName === "automation") {
+      activityLogs = ["Waiting for Recommendation Agent..."]
     } else {
       activityLogs = ["Queued for execution..."]
     }
@@ -70,7 +72,7 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
     if (execution.started_at) startedAt = parseTime(execution.started_at) || null
     if (execution.finished_at) finishedAt = parseTime(execution.finished_at) || null
     if (execution.duration_ms) durationMs = execution.duration_ms
-    activityLogs = [execution.status === "FAILED" ? "Execution failed." : "Analysis completed."]
+    activityLogs = [execution.status === "FAILED" ? (execution.error || "Execution failed.") : "Analysis completed."]
   } else {
     // Parse stream events to derive live state or replay display state
     events.forEach(ev => {
@@ -87,6 +89,7 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
           liveStatus = "FAILED"
           if (!finishedAt) finishedAt = parseTime(ev.timestamp as string) || now
           if (startedAt && !durationMs) durationMs = finishedAt - startedAt
+          if (ev.error) activityLogs.push(ev.error as string)
         } else if (ev.event === "agent_skipped") {
           liveStatus = "SKIPPED"
         } else if (ev.event === "agent_progress") {
@@ -103,6 +106,8 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
         activityLogs = ["Waiting for Wave 1 dependencies..."]
       } else if (backendName === "recommendation") {
         activityLogs = ["Waiting for upstream agents..."]
+      } else if (backendName === "explainability" || backendName === "reporting" || backendName === "automation") {
+        activityLogs = ["Waiting for Recommendation Agent..."]
       } else {
         activityLogs = ["Queued for execution..."]
       }
@@ -119,6 +124,9 @@ export function AgentExecutionCard({ name, execution, isActive, events = [], isI
     if (nl.includes("security")) return <Shield className="h-5 w-5" />
     if (nl.includes("data")) return <CheckSquare className="h-5 w-5" />
     if (nl.includes("recommendation")) return <Lightbulb className="h-5 w-5" />
+    if (nl.includes("explainability") || nl.includes("explain")) return <HelpCircle className="h-5 w-5" />
+    if (nl.includes("reporting") || nl.includes("report")) return <ClipboardList className="h-5 w-5" />
+    if (nl.includes("automation") || nl.includes("automat")) return <Cog className="h-5 w-5" />
     if (nl.includes("monitoring")) return <Monitor className="h-5 w-5" />
     return <Search className="h-5 w-5" />
   }
