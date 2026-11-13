@@ -161,11 +161,13 @@ export function DiscoveryConsole({
     if (a.status === "COMPLETED" || a.status === "FAILED" || a.status === "SKIPPED") completedCount++
   })
 
+  const totalAgents = Object.keys(agents).length || 9
+
   // Final Execution State Fix
   if (isComplete && !replayState?.isReplaying) {
     if (actualSessionStatus === "COMPLETED") {
       activeCount = 0
-      completedCount = 6 // Hardcoded based on current architecture, or Object.keys(agents).length if dynamic
+      completedCount = totalAgents
     }
   }
 
@@ -228,7 +230,7 @@ export function DiscoveryConsole({
         <div className="flex items-center justify-between px-4 py-3 bg-slate-900/50 border-b border-slate-800">
           <div className="flex items-center space-x-3">
             <Terminal className="h-4 w-4 text-emerald-500" />
-            <span className="text-slate-200 font-semibold tracking-wide">EADIP DISCOVERY ENGINE</span>
+            <span className="text-slate-200 font-semibold tracking-wide">AETHERARCHIVE DISCOVERY ENGINE</span>
             <span className="text-slate-500 text-xs px-2 py-0.5 rounded-full bg-slate-800/50">
               Target: {warehouseName}
             </span>
@@ -245,7 +247,7 @@ export function DiscoveryConsole({
         </div>
         <div className="px-4 py-3 flex items-center justify-between bg-slate-900/20 text-slate-400">
           <div>Parallel: <span className="text-slate-200 font-medium">{activeCount} active</span></div>
-          <div>Completed: <span className="text-slate-200 font-medium">{completedCount} / 6</span></div>
+          <div>Completed: <span className="text-slate-200 font-medium">{completedCount} / {totalAgents}</span></div>
         </div>
       </div>
 
@@ -279,8 +281,27 @@ export function DiscoveryConsole({
              else if (eventName === "agent_started") { msg = `${agent} started`; color = "text-emerald-400" }
              else if (eventName === "agent_progress") { msg = `${agent} → ${ev.message}`; color = "text-slate-300" }
              else if (eventName === "agent_completed") { msg = `${agent} completed`; color = "text-emerald-500 font-medium" }
-             else if (eventName === "agent_failed") { msg = `${agent} failed: ${ev.error}`; color = "text-red-400" }
-             else if (eventName === "discovery_completed") { msg = "Discovery Engine completed successfully"; color = "text-emerald-400 font-bold" }
+             else if (eventName === "agent_failed") { msg = `${agent} failed: ${ev.error || "Execution failed"}`; color = "text-red-400" }
+             else if (eventName === "action_approved") { msg = `Automation → Action '${ev.action_id}' APPROVED by ${ev.approved_by || 'user'}`; color = "text-emerald-400 font-semibold" }
+             else if (eventName === "action_rejected") { msg = `Automation → Action '${ev.action_id}' REJECTED by ${ev.rejected_by || 'user'}`; color = "text-amber-400 font-semibold" }
+             else if (eventName === "approval_state_changed") { msg = `Automation → Action '${ev.action_id}' state changed to ${ev.status}`; color = "text-sky-400" }
+             else if (eventName === "action_execution_started") { msg = `Controlled Execution → Action '${ev.action_id}' (${ev.action_type}) started on target warehouse`; color = "text-sky-400 font-semibold" }
+             else if (eventName === "action_execution_completed") { msg = `Controlled Execution → Action '${ev.action_id}' COMPLETED in ${ev.duration_ms}ms (Verification Pending)`; color = "text-emerald-400 font-bold" }
+             else if (eventName === "action_execution_failed") { msg = `Controlled Execution → Action '${ev.action_id}' FAILED: ${ev.error}`; color = "text-red-400 font-bold" }
+             else if (eventName === "verification_started") { msg = `Verification Agent → Action '${ev.action_id}' catalog state verification started`; color = "text-indigo-400 font-semibold" }
+             else if (eventName === "verification_completed") { msg = `Verification Agent → Action '${ev.action_id}' VERIFIED in ${ev.duration_ms}ms (Catalog Evidence Confirmed)`; color = "text-emerald-400 font-bold" }
+             else if (eventName === "verification_failed") { msg = `Verification Agent → Action '${ev.action_id}' VERIFICATION FAILED: Catalog evidence absent`; color = "text-red-400 font-bold" }
+             else if (eventName === "verification_state_changed") { msg = `Verification Agent → Action '${ev.action_id}' verification status: ${ev.verification_status}`; color = "text-purple-400" }
+             else if (eventName === "reanalysis_started") { msg = `Supervisor Re-analysis → Synthesizing outcome assessment for Action '${ev.action_id}'`; color = "text-purple-400 font-semibold" }
+             else if (eventName === "reanalysis_completed") { msg = `Supervisor Re-analysis → Action '${ev.action_id}' objective status: ${ev.objective_status} (Follow-up: ${ev.follow_up_required ? 'REQUIRED' : 'NONE'})`; color = "text-emerald-400 font-bold" }
+             else if (eventName === "reanalysis_failed") { msg = `Supervisor Re-analysis → Re-analysis failed: ${ev.error}`; color = "text-red-400 font-bold" }
+             else if (eventName === "reanalysis_state_changed") { msg = `Supervisor Re-analysis → Action '${ev.action_id}' status: ${ev.reanalysis_status}`; color = "text-purple-300" }
+             else if (eventName === "discovery_completed") {
+               const sess = ev.session as Record<string, unknown> | undefined
+               const isFailed = actualSessionStatus === "FAILED" || sess?.status === "FAILED"
+               msg = isFailed ? "Discovery Engine execution finished: FAILED" : "Discovery Engine completed successfully"
+               color = isFailed ? "text-red-400 font-bold" : "text-emerald-400 font-bold"
+             }
              
              if (!msg) return null;
              
@@ -361,7 +382,7 @@ export function DiscoveryConsole({
              </div>
              <div>
                <div className="text-xs mb-1 uppercase tracking-wider text-slate-500">Agents</div>
-               <div className="text-slate-200 font-medium text-base">{completedCount} / 6 completed</div>
+               <div className="text-slate-200 font-medium text-base">{completedCount} / {totalAgents} completed</div>
              </div>
              <div>
                <div className="text-xs mb-1 uppercase tracking-wider text-slate-500">Fastest Agent</div>

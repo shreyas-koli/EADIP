@@ -11,12 +11,12 @@ def test_encrypt_decrypt_roundtrip():
     assert decrypted == plaintext
 
 def test_invalid_ciphertext():
-    with pytest.raises(ValueError, match="Invalid credential ciphertext"):
+    with pytest.raises(ValueError, match="WAREHOUSE_CREDENTIALS_INVALID_TOKEN"):
         decrypt_credential("invalid_ciphertext")
 
 def test_empty_credential():
     with pytest.raises(ValueError, match="Credential cannot be empty"):
         encrypt_credential("")
         
-    with pytest.raises(ValueError, match="Ciphertext cannot be empty"):
+    with pytest.raises(ValueError, match="WAREHOUSE_CREDENTIALS_MISSING"):
         decrypt_credential("")

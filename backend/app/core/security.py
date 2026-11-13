@@ -82,10 +82,19 @@ def decrypt_credential(ciphertext: str) -> str:
     Decrypt a Fernet-encrypted credential back to plaintext.
     """
     if not ciphertext:
-        raise ValueError("Ciphertext cannot be empty")
-        
-    f = Fernet(settings.ENCRYPTION_KEY)
+        raise ValueError("WAREHOUSE_CREDENTIALS_MISSING")
+
+    if not settings.ENCRYPTION_KEY:
+        raise ValueError("WAREHOUSE_ENCRYPTION_KEY_MISSING")
+
+    try:
+        f = Fernet(settings.ENCRYPTION_KEY)
+    except Exception as e:
+        raise ValueError(f"WAREHOUSE_ENCRYPTION_KEY_INVALID: {str(e)}") from e
+
     try:
         return f.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
     except InvalidToken:
-        raise ValueError("Invalid credential ciphertext")
+        raise ValueError("WAREHOUSE_CREDENTIALS_INVALID_TOKEN")
+    except Exception as e:
+        raise ValueError(f"WAREHOUSE_CREDENTIALS_MALFORMED: {str(e)}") from e

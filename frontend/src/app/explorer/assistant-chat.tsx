@@ -10,6 +10,8 @@ interface AssistantChatProps {
   warehouseId: number
   selectedTable: DatabaseTable | null
   onSendToSqlConsole?: (sql: string) => void
+  messages?: ChatMessage[]
+  onMessagesChange?: (messages: ChatMessage[]) => void
 }
 
 const PROVIDER_META: Record<AIProviderId, { label: string; modeLabel: string }> = {
@@ -18,11 +20,45 @@ const PROVIDER_META: Record<AIProviderId, { label: string; modeLabel: string }> 
   ollama: { label: "Local", modeLabel: "Ollama" },
 }
 
-export function AssistantChat({ warehouseId, selectedTable, onSendToSqlConsole }: AssistantChatProps) {
-  const [messages, setMessages] = React.useState<ChatMessage[]>([])
+export function AssistantChat({
+  warehouseId,
+  selectedTable,
+  onSendToSqlConsole,
+  messages: messagesProp,
+  onMessagesChange,
+}: AssistantChatProps) {
+  const [internalMessages, setInternalMessages] = React.useState<ChatMessage[]>([])
+  const messages = messagesProp !== undefined ? messagesProp : internalMessages
+
+  const updateMessages = React.useCallback(
+    (newMsgs: ChatMessage[]) => {
+      if (messagesProp === undefined) {
+        setInternalMessages(newMsgs)
+      }
+      onMessagesChange?.(newMsgs)
+    },
+    [messagesProp, onMessagesChange]
+  )
+
   const [input, setInput] = React.useState("")
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+
+  // Context Key for isolation check
+  const contextKey = selectedTable
+    ? `${warehouseId}:${selectedTable.schema_name}.${selectedTable.name}`
+    : `${warehouseId}:_global_`
+
+  const prevContextKeyRef = React.useRef(contextKey)
+
+  // Clear input/error when switching context (table change)
+  React.useEffect(() => {
+    if (prevContextKeyRef.current !== contextKey) {
+      prevContextKeyRef.current = contextKey
+      setInput("")
+      setError(null)
+    }
+  }, [contextKey])
 
   // Provider state
   const [providers, setProviders] = React.useState<ProviderStatus[]>([])
@@ -62,6 +98,7 @@ export function AssistantChat({ warehouseId, selectedTable, onSendToSqlConsole }
   }, [warehouseId])
 
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProviders()
   }, [fetchProviders])
 
@@ -73,8 +110,8 @@ export function AssistantChat({ warehouseId, selectedTable, onSendToSqlConsole }
       return
     }
 
-    const newMessages = [...messages, { role: "user", content: text }]
-    setMessages(newMessages)
+    const newMessages: ChatMessage[] = [...messages, { role: "user", content: text }]
+    updateMessages(newMessages)
     setInput("")
     setIsLoading(true)
     setError(null)
@@ -88,7 +125,8 @@ export function AssistantChat({ warehouseId, selectedTable, onSendToSqlConsole }
       }
       
       const res = await explorerApi.chatAssistant(warehouseId, payload)
-      setMessages((prev) => [...prev, { role: "assistant", content: res.response }])
+      const updatedMessages: ChatMessage[] = [...newMessages, { role: "assistant", content: res.response }]
+      updateMessages(updatedMessages)
     } catch (err) {
       const e = err as Error
       setError(e.message || "Failed to communicate with assistant.")
@@ -156,23 +194,24 @@ export function AssistantChat({ warehouseId, selectedTable, onSendToSqlConsole }
                 return (
                   <button
                     key={p.id}
-                    disabled={!p.available}
-                    onClick={() => p.available && setSelectedProvider(p.id as AIProviderId)}
+                    onClick={() => setSelectedProvider(p.id as AIProviderId)}
                     title={p.available ? `${meta.label} (${meta.modeLabel})` : (p.reason ?? "Unavailable")}
                     className={[
-                      "flex flex-col items-start px-2.5 py-1 rounded-md border text-left transition-all",
+                      "flex flex-col items-start px-2.5 py-1 rounded-md border text-left transition-all cursor-pointer",
                       "focus:outline-none focus:ring-1 focus:ring-blue-500/50",
                       isSelected
-                        ? "border-blue-500 bg-blue-600/20 text-white"
+                        ? p.available
+                          ? "border-blue-500 bg-blue-600/20 text-white"
+                          : "border-amber-500 bg-amber-500/10 text-amber-200"
                         : p.available
                         ? "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500 hover:bg-slate-700"
-                        : "border-slate-800 bg-slate-900 text-slate-600 cursor-not-allowed opacity-60",
+                        : "border-slate-800 bg-slate-900/80 text-slate-500 hover:border-slate-700 hover:bg-slate-800",
                     ].join(" ")}
                   >
                     <div className="flex items-center gap-1.5">
                       <span
                         className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                          p.available ? "bg-emerald-400" : "bg-slate-600"
+                          p.available ? "bg-emerald-400" : "bg-red-400"
                         }`}
                       />
                       <span className="text-xs font-medium leading-tight">{meta.label}</span>
@@ -180,7 +219,7 @@ export function AssistantChat({ warehouseId, selectedTable, onSendToSqlConsole }
                     <span className="text-[10px] leading-tight pl-3">
                       {p.available
                         ? meta.modeLabel
-                        : (p.reason ?? "Unavailable")}
+                        : "Unavailable"}
                     </span>
                   </button>
                 )
@@ -199,7 +238,7 @@ export function AssistantChat({ warehouseId, selectedTable, onSendToSqlConsole }
         {selectedProvider && !activeProviderStatus?.available && (
           <p className="text-[10px] text-red-400 mt-1.5 flex items-center gap-1">
             <AlertCircle className="h-3 w-3 shrink-0" />
-            Selected provider is unavailable. Please choose another or resolve the issue.
+            {activeProviderStatus?.reason || "Selected provider is unavailable. Please check backend configuration."}
           </p>
         )}
       </div>

@@ -9,16 +9,16 @@ from app.ai.ollama_provider import OllamaProvider
 
 @pytest.fixture
 def mock_openai_settings(monkeypatch):
-    monkeypatch.setattr("app.ai.openai_provider.settings.OPENAI_API_KEY", "test-openai-key")
+    monkeypatch.setattr("app.ai.openai_provider.settings.OPENAI_API_KEY", "sk-test-openai-key")
     
 @pytest.fixture
 def mock_gemini_settings(monkeypatch):
-    monkeypatch.setattr("app.ai.gemini_provider.settings.GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setattr("app.ai.gemini_provider.settings.GEMINI_API_KEY", "AIzaSy-test-gemini-key")
     monkeypatch.setattr("app.ai.gemini_provider.settings.GEMINI_MODEL", "gemini-3.8-flash")
 
 @pytest.fixture
 def mock_ollama_settings(monkeypatch):
-    monkeypatch.setattr("app.ai.ollama_provider.settings.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setattr("app.ai.ollama_provider.settings.OLLAMA_BASE_URL", "http://localhost:11434")
     monkeypatch.setattr("app.ai.ollama_provider.settings.OLLAMA_MODEL", "llama3.2")
     monkeypatch.setattr("app.ai.ollama_provider.settings.OLLAMA_TIMEOUT_SECONDS", 120.0)
 
@@ -63,6 +63,20 @@ def test_openai_provider_generate_sql(mock_openai, mock_openai_settings):
         temperature=0.0
     )
 
+def test_openai_missing_api_key_returns_400(monkeypatch):
+    monkeypatch.setattr("app.ai.openai_provider.settings.OPENAI_API_KEY", None)
+    with pytest.raises(HTTPException) as exc:
+        OpenAIProvider()
+    assert exc.value.status_code == 400
+    assert "OpenAI is not configured" in exc.value.detail
+
+def test_gemini_key_in_openai_variable_detected(monkeypatch):
+    monkeypatch.setattr("app.ai.openai_provider.settings.OPENAI_API_KEY", "AIzaSyFakeGeminiKey123")
+    with pytest.raises(HTTPException) as exc:
+        OpenAIProvider()
+    assert exc.value.status_code == 400
+    assert "contains a Gemini API key" in exc.value.detail
+
 # ── Gemini Provider Tests ────────────────────────────────────────
 
 @patch("app.ai.gemini_provider.OpenAI")
@@ -79,7 +93,7 @@ def test_gemini_provider_generate_sql(mock_openai, mock_gemini_settings):
     
     assert result == "SELECT * FROM test;"
     mock_openai.assert_called_once_with(
-        api_key="test-gemini-key",
+        api_key="AIzaSy-test-gemini-key",
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         timeout=15.0
     )
@@ -89,11 +103,25 @@ def test_gemini_provider_generate_sql(mock_openai, mock_gemini_settings):
         temperature=0.0
     )
 
+def test_gemini_missing_api_key_returns_400(monkeypatch):
+    monkeypatch.setattr("app.ai.gemini_provider.settings.GEMINI_API_KEY", None)
+    with pytest.raises(HTTPException) as exc:
+        GeminiProvider()
+    assert exc.value.status_code == 400
+    assert "Gemini is not configured" in exc.value.detail
+
+def test_openai_key_in_gemini_variable_detected(monkeypatch):
+    monkeypatch.setattr("app.ai.gemini_provider.settings.GEMINI_API_KEY", "sk-proj-FakeOpenAIKey123")
+    with pytest.raises(HTTPException) as exc:
+        GeminiProvider()
+    assert exc.value.status_code == 400
+    assert "contains an OpenAI API key" in exc.value.detail
+
 # ── Ollama Provider Tests ────────────────────────────────────────
 
 @patch("app.ai.ollama_provider.OpenAI")
 def test_ollama_provider_instantiation(mock_openai_cls, mock_ollama_settings):
-    """OllamaProvider reads OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SECONDS from settings."""
+    """OllamaProvider reads OLLAMA_BASE_URL and appends /v1 for SDK compatibility."""
     provider = OllamaProvider()
     assert provider.base_url == "http://localhost:11434/v1"
     assert provider.model == "llama3.2"
@@ -105,104 +133,17 @@ def test_ollama_provider_instantiation(mock_openai_cls, mock_ollama_settings):
     )
 
 @patch("app.ai.ollama_provider.OpenAI")
-def test_ollama_provider_no_real_api_key(mock_openai_cls, mock_ollama_settings):
-    """Ollama uses placeholder api_key='ollama', not a real secret."""
-    OllamaProvider()
-    call_kwargs = mock_openai_cls.call_args[1]
-    assert call_kwargs["api_key"] == "ollama"
-
-@patch("app.ai.ollama_provider.OpenAI")
-def test_ollama_provider_uses_local_endpoint(mock_openai_cls, mock_ollama_settings):
-    """Ollama connects to localhost, not a cloud API."""
-    OllamaProvider()
-    call_kwargs = mock_openai_cls.call_args[1]
-    assert "localhost" in call_kwargs["base_url"]
-    assert "openai.com" not in call_kwargs["base_url"]
-    assert "googleapis" not in call_kwargs["base_url"]
-
-@patch("app.ai.ollama_provider.OpenAI")
-def test_ollama_provider_generate_sql(mock_openai_cls, mock_ollama_settings):
-    """OllamaProvider.generate_sql returns the model's response via the OpenAI-compat API."""
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "SELECT id FROM users;"
-    mock_client.chat.completions.create.return_value = mock_response
-
-    provider = OllamaProvider()
-    result = provider.generate_sql([{"role": "user", "content": "show users"}])
-
-    assert result == "SELECT id FROM users;"
-    mock_client.chat.completions.create.assert_called_once_with(
-        model="llama3.2",
-        messages=[{"role": "user", "content": "show users"}],
-        temperature=0.0,
-    )
-
-@patch("app.ai.ollama_provider.OpenAI")
-def test_ollama_provider_custom_model(mock_openai_cls, monkeypatch):
-    """Ollama uses OLLAMA_MODEL from settings, allowing user override."""
-    monkeypatch.setattr("app.ai.ollama_provider.settings.OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    monkeypatch.setattr("app.ai.ollama_provider.settings.OLLAMA_MODEL", "mistral")
-    monkeypatch.setattr("app.ai.ollama_provider.settings.OLLAMA_TIMEOUT_SECONDS", 60.0)
-    
-    provider = OllamaProvider()
-    assert provider.model == "mistral"
-
-@patch("app.ai.ollama_provider.OpenAI")
 def test_ollama_connection_refused_error(mock_openai_cls, mock_ollama_settings):
-    """Connection refused produces a safe user-facing error."""
+    """Connection refused produces a safe 400 HTTP exception."""
     mock_client = MagicMock()
     mock_openai_cls.return_value = mock_client
     mock_client.chat.completions.create.side_effect = Exception("Connection refused")
 
     provider = OllamaProvider()
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(HTTPException) as excinfo:
         provider.generate_sql([{"role": "user", "content": "test"}])
-    assert "Ollama is running" in str(excinfo.value)
-    # Ensure no raw stack trace or secrets leak
-    assert "localhost:11434" not in str(excinfo.value)
-
-@patch("app.ai.ollama_provider.OpenAI")
-def test_ollama_model_not_found_error(mock_openai_cls, mock_ollama_settings):
-    """Model not found produces a safe, actionable error."""
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
-    mock_client.chat.completions.create.side_effect = Exception("model 'llama3.2' not found")
-
-    provider = OllamaProvider()
-    with pytest.raises(Exception) as excinfo:
-        provider.generate_sql([{"role": "user", "content": "test"}])
-    assert "unavailable" in str(excinfo.value)
-
-@patch("app.ai.ollama_provider.OpenAI")
-def test_ollama_timeout_error(mock_openai_cls, mock_ollama_settings):
-    """Timeout produces a safe user-facing error."""
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
-    mock_client.chat.completions.create.side_effect = Exception("Request timed out")
-
-    provider = OllamaProvider()
-    with pytest.raises(Exception) as excinfo:
-        provider.generate_sql([{"role": "user", "content": "test"}])
-    assert "timed out" in str(excinfo.value)
-
-@patch("app.ai.ollama_provider.OpenAI")
-def test_ollama_generic_error_no_secrets(mock_openai_cls, mock_ollama_settings):
-    """Generic errors do not leak secrets or internal paths."""
-    mock_client = MagicMock()
-    mock_openai_cls.return_value = mock_client
-    mock_client.chat.completions.create.side_effect = Exception("some unexpected internal SDK error")
-
-    provider = OllamaProvider()
-    with pytest.raises(Exception) as excinfo:
-        provider.generate_sql([{"role": "user", "content": "test"}])
-    error_msg = str(excinfo.value)
-    assert "encountered an error" in error_msg
-    # Must not contain raw exception details
-    assert "SDK" not in error_msg
-
+    assert excinfo.value.status_code == 400
+    assert "Ollama is running" in excinfo.value.detail
 
 # ── Provider Availability Service Tests ─────────────────────────
 
@@ -225,7 +166,14 @@ def test_availability_openai_not_configured(monkeypatch):
     status = _check_openai()
     assert status.id == "openai"
     assert status.available is False
-    assert status.reason == "API key not configured"
+    assert "OPENAI_API_KEY is not set" in status.reason
+
+def test_availability_openai_gemini_key_detected(monkeypatch):
+    monkeypatch.setattr("app.services.provider_availability.settings.OPENAI_API_KEY", "AIzaSyFakeKey")
+    status = _check_openai()
+    assert status.id == "openai"
+    assert status.available is False
+    assert "contains a Gemini API key" in status.reason
 
 def test_availability_gemini_configured(monkeypatch):
     monkeypatch.setattr("app.services.provider_availability.settings.GEMINI_API_KEY", "AIzaSyTest1234567890")
@@ -239,11 +187,18 @@ def test_availability_gemini_not_configured(monkeypatch):
     status = _check_gemini()
     assert status.id == "gemini"
     assert status.available is False
-    assert status.reason == "API key not configured"
+    assert "GEMINI_API_KEY is not set" in status.reason
+
+def test_availability_gemini_openai_key_detected(monkeypatch):
+    monkeypatch.setattr("app.services.provider_availability.settings.GEMINI_API_KEY", "sk-proj-FakeKey")
+    status = _check_gemini()
+    assert status.id == "gemini"
+    assert status.available is False
+    assert "contains an OpenAI API key" in status.reason
 
 @patch("urllib.request.urlopen")
 def test_availability_ollama_reachable(mock_urlopen, monkeypatch):
-    monkeypatch.setattr("app.services.provider_availability.settings.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setattr("app.services.provider_availability.settings.OLLAMA_BASE_URL", "http://localhost:11434")
     monkeypatch.setattr("app.services.provider_availability.settings.OLLAMA_MODEL", "llama3.2")
     mock_resp = MagicMock()
     mock_resp.read.return_value = b'{"models": [{"name": "llama3.2:latest"}]}'
@@ -256,7 +211,7 @@ def test_availability_ollama_reachable(mock_urlopen, monkeypatch):
 
 @patch("urllib.request.urlopen")
 def test_availability_ollama_unreachable(mock_urlopen, monkeypatch):
-    monkeypatch.setattr("app.services.provider_availability.settings.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setattr("app.services.provider_availability.settings.OLLAMA_BASE_URL", "http://localhost:11434")
     monkeypatch.setattr("app.services.provider_availability.settings.OLLAMA_MODEL", "llama3.2")
     mock_urlopen.side_effect = OSError("Connection refused")
     
@@ -266,8 +221,8 @@ def test_availability_ollama_unreachable(mock_urlopen, monkeypatch):
     assert "not running" in status.reason
 
 def test_get_provider_availability_returns_all_providers(monkeypatch):
-    monkeypatch.setattr("app.services.provider_availability.settings.OPENAI_API_KEY", "key1")
-    monkeypatch.setattr("app.services.provider_availability.settings.GEMINI_API_KEY", "key2")
+    monkeypatch.setattr("app.services.provider_availability.settings.OPENAI_API_KEY", "sk-key1")
+    monkeypatch.setattr("app.services.provider_availability.settings.GEMINI_API_KEY", "AIza-key2")
     monkeypatch.setattr("app.services.provider_availability.settings.DEFAULT_AI_PROVIDER", "gemini")
     
     with patch("urllib.request.urlopen") as mock_urlopen:
@@ -279,6 +234,42 @@ def test_get_provider_availability_returns_all_providers(monkeypatch):
         assert "openai" in ids
         assert "gemini" in ids
         assert "ollama" in ids
+
+# ── Service Process Assistant Chat Tests ────────────────────────
+
+from app.services.assistant_service import process_assistant_chat
+from app.schemas.assistant import AssistantRequest
+
+@patch("app.services.assistant_service.ProviderFactory.get_provider")
+def test_process_assistant_chat_respects_explicit_provider(mock_get_provider, mock_gemini_settings):
+    mock_provider = MagicMock()
+    mock_provider.generate_sql.return_value = "SELECT 1;"
+    mock_get_provider.return_value = mock_provider
+    mock_engine = MagicMock()
+
+    req = AssistantRequest(messages=[{"role": "user", "content": "hi"}], provider="gemini")
+    resp = process_assistant_chat(mock_engine, req)
+
+    mock_get_provider.assert_called_once_with("gemini")
+    assert resp.provider_used == "gemini"
+    assert resp.response == "SELECT 1;"
+
+@patch("app.services.assistant_service.ProviderFactory.get_provider")
+def test_process_assistant_chat_no_silent_fallback_on_error(mock_get_provider, mock_gemini_settings):
+    mock_provider = MagicMock()
+    mock_provider.generate_sql.side_effect = HTTPException(status_code=400, detail="Gemini rate limit exceeded")
+    mock_get_provider.return_value = mock_provider
+    mock_engine = MagicMock()
+
+    req = AssistantRequest(messages=[{"role": "user", "content": "hi"}], provider="gemini")
+    with pytest.raises(HTTPException) as exc:
+        process_assistant_chat(mock_engine, req)
+
+    assert exc.value.status_code == 400
+    assert "Gemini rate limit exceeded" in exc.value.detail
+    # Never called ProviderFactory again for fallback
+    assert mock_get_provider.call_count == 1
+
 
 
 

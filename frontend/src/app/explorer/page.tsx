@@ -4,107 +4,120 @@ import * as React from "react"
 import { PageContainer } from "@/components/layout/page-container"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadingState } from "@/components/ui/loading-state"
-import { AlertCircle, Database } from "lucide-react"
+import { AlertCircle, Database, Server, Compass } from "lucide-react"
 
 import { warehousesApi, Warehouse } from "@/lib/api/warehouses"
-
 import { DatabaseBrowser } from "./database-browser"
 
 export default function ExplorerPage() {
   const [warehouses, setWarehouses] = React.useState<Warehouse[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-  
   const [selectedWarehouseId, setSelectedWarehouseId] = React.useState<string>("")
 
-  React.useEffect(() => {
-    let mounted = true
-    const fetchWarehouses = async () => {
-      try {
-        if (mounted) setIsLoading(true)
-        const data = await warehousesApi.list()
-        if (mounted) {
-          setWarehouses(data.sort((a, b) => a.name.localeCompare(b.name)))
-          setError(null)
-          if (data.length > 0 && !selectedWarehouseId) {
-            setSelectedWarehouseId(data[0].id.toString())
-          }
-        }
-      } catch (err) {
-        if (mounted) {
-          const e = err as Error
-          setError(e.message || "Failed to load warehouses.")
-        }
-      } finally {
-        if (mounted) setIsLoading(false)
+  const fetchWarehouses = React.useCallback(async () => {
+    try {
+      setIsLoading(true)
+      const data = await warehousesApi.list()
+      setWarehouses(data.sort((a, b) => a.name.localeCompare(b.name)))
+      setError(null)
+      if (data.length > 0 && !selectedWarehouseId) {
+        setSelectedWarehouseId(data[0].id.toString())
       }
+    } catch (err) {
+      const e = err as Error
+      setError(e.message || "Failed to load warehouses.")
+    } finally {
+      setIsLoading(false)
     }
-    fetchWarehouses()
-    return () => { mounted = false }
   }, [selectedWarehouseId])
 
-  const selectedWarehouse = warehouses.find(w => w.id.toString() === selectedWarehouseId)
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchWarehouses()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectedWarehouse = warehouses.find((w) => w.id.toString() === selectedWarehouseId)
 
   if (isLoading && warehouses.length === 0) {
     return (
-      <PageContainer title="Warehouse Explorer">
+      <PageContainer title="Warehouse Explorer" fullWidth>
         <div className="flex h-[600px] items-center justify-center">
-          <LoadingState message="Loading warehouses..." />
+          <LoadingState message="Connecting to Warehouse Object Catalog..." />
         </div>
       </PageContainer>
     )
   }
 
   return (
-    <PageContainer title="Warehouse Explorer">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+    <PageContainer title="Warehouse Explorer" fullWidth>
+      {/* Top Controls Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-slate-800/80 pb-5">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Warehouse Explorer</h2>
-          <p className="text-slate-400">Select a warehouse to explore its schema and tables.</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="p-1 rounded-md bg-cyan-500/10 text-cyan-400">
+              <Compass className="h-4 w-4" />
+            </span>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-cyan-400">
+              Interactive Data Studio
+            </span>
+          </div>
+          <h2 className="text-2xl font-extrabold tracking-tight text-white">
+            Warehouse Explorer & Visual Analytics
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Database object hierarchy, SQL worksheet console, data previews, and Snowflake-style visual charting.
+          </p>
         </div>
+
+        {/* Warehouse Switcher */}
+        {warehouses.length > 0 && (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-1.5 shadow-sm">
+              <Server className="h-4 w-4 text-cyan-400 shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-medium uppercase text-slate-500">Active Warehouse</span>
+                <select
+                  id="warehouse-select"
+                  value={selectedWarehouseId}
+                  onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-slate-100 focus:outline-none cursor-pointer pr-4"
+                >
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id.toString()} className="bg-slate-900 text-slate-200">
+                      {w.name} ({w.db_type.toUpperCase()})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {selectedWarehouse && (
+              <span className="text-[11px] font-mono uppercase px-2.5 py-1.5 rounded-lg bg-blue-950/60 text-blue-400 border border-blue-800/50">
+                {selectedWarehouse.db_type}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {error ? (
         <EmptyState
           icon={AlertCircle}
-          title="Failed to load warehouses"
+          title="Warehouse Discovery Error"
           description={error}
+          action={<button onClick={fetchWarehouses} className="text-xs text-cyan-400 underline">Retry</button>}
         />
       ) : warehouses.length === 0 ? (
         <EmptyState
           icon={Database}
-          title="No warehouses configured"
-          description="Connect your first data warehouse to begin discovery and analysis."
+          title="No Warehouses Configured"
+          description="Connect your first PostgreSQL, MySQL, Snowflake, or BigQuery instance to explore schemas."
         />
       ) : (
-        <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-2">
-            <label htmlFor="warehouse-select" className="text-sm font-medium text-slate-300">
-              Select Warehouse
-            </label>
-            <select
-              id="warehouse-select"
-              value={selectedWarehouseId}
-              onChange={(e) => setSelectedWarehouseId(e.target.value)}
-              className="flex h-10 w-full max-w-md items-center justify-between rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="" disabled>Select a warehouse...</option>
-              {warehouses.map((w) => (
-                <option key={w.id} value={w.id.toString()}>
-                  {w.name} ({w.db_type})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <hr className="border-slate-800" />
-
-          {selectedWarehouse && (
-            <div className="mt-4">
-              <DatabaseBrowser key={selectedWarehouseId} warehouseId={parseInt(selectedWarehouseId)} />
-            </div>
-          )}
-        </div>
+        selectedWarehouse && (
+          <DatabaseBrowser key={selectedWarehouseId} warehouseId={parseInt(selectedWarehouseId)} />
+        )
       )}
     </PageContainer>
   )

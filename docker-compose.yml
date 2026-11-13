@@ -1,4 +1,4 @@
-# EADIP Docker Compose Configuration
+# AetherArchive Docker Compose Configuration
 version: "3.8"
 
 services: {}

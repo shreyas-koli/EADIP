@@ -23,6 +23,10 @@ from app.agents.statistics_agent import StatisticsAgent
 from app.agents.recommendation_agent import RecommendationAgent
 from app.agents.data_quality_agent import DataQualityAgent
 from app.agents.monitoring_agent import MonitoringAgent
+from app.agents.explainability_agent import ExplainabilityAgent
+from app.agents.reporting_agent import ReportingAgent
+from app.agents.automation_agent import AutomationAgent
+from app.agents.verification_agent import VerificationAgent
 from app.models.warehouse import Warehouse
 from app.context.shared_context import SharedContext
 from app.orchestrator.agent_orchestrator import AgentTask
@@ -37,7 +41,7 @@ class TaskFactory:
 
     The factory is designed to grow over time — new ``build_*``
     methods can be added for analysis, security, prediction,
-    explainability, etc. without modifying the orchestrator.
+    explainability, reporting, etc. without modifying the orchestrator.
 
     Usage::
 
@@ -56,6 +60,10 @@ class TaskFactory:
         self._recommendation_agent = RecommendationAgent()
         self._data_quality_agent = DataQualityAgent()
         self._monitoring_agent = MonitoringAgent()
+        self._explainability_agent = ExplainabilityAgent()
+        self._reporting_agent = ReportingAgent()
+        self._automation_agent = AutomationAgent()
+        self._verification_agent = VerificationAgent()
 
     # ── Metadata discovery plan ──────────────────────────────────
 
@@ -92,6 +100,15 @@ class TaskFactory:
              requires ``metadata``, ``statistics``, ``security``,
              and ``data_quality`` to be present in the SharedContext.
 
+        * **Wave 4** — dependent on Wave 3 completing (run in parallel):
+
+          7. ``explainability`` — evidence-based explanation generation;
+             requires ``recommendation`` to be present in SharedContext.
+          8. ``reporting`` — overall consolidated report generation;
+             requires ``recommendation`` to be present in SharedContext.
+          9. ``automation`` — safe action-plan generation;
+             requires ``recommendation`` to be present in SharedContext.
+
         Parameters
         ──────────
         warehouse : Warehouse
@@ -100,8 +117,9 @@ class TaskFactory:
         Returns
         ───────
         list[AgentTask]
-            Six tasks — metadata, statistics, monitoring, security,
-            data_quality, and recommendation — ready for
+            Nine tasks — metadata, statistics, monitoring, security,
+            data_quality, recommendation, explainability, reporting, and
+            automation — ready for
             ``AgentOrchestrator.execute_parallel()``.
         """
         metadata_task = AgentTask(
@@ -143,6 +161,27 @@ class TaskFactory:
             dependencies=["metadata", "statistics", "security", "data_quality"],
         )
 
+        explainability_task = AgentTask(
+            name="explainability",
+            callable=self._explainability_agent.generate_explanations,
+            args=(warehouse, context),
+            dependencies=["recommendation"],
+        )
+
+        reporting_task = AgentTask(
+            name="reporting",
+            callable=self._reporting_agent.generate_report,
+            args=(warehouse, context),
+            dependencies=["recommendation"],
+        )
+
+        automation_task = AgentTask(
+            name="automation",
+            callable=self._automation_agent.generate_action_plans,
+            args=(warehouse, context),
+            dependencies=["recommendation"],
+        )
+
         return [
             metadata_task,
             statistics_task,
@@ -150,6 +189,9 @@ class TaskFactory:
             security_task,
             data_quality_task,
             recommendation_task,
+            explainability_task,
+            reporting_task,
+            automation_task,
         ]
 
     # ── Future plan builders (stubs) ─────────────────────────────

@@ -4,7 +4,10 @@ import * as React from "react"
 import { DiscoverySession } from "@/lib/api/discovery"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { AgentStatus } from "@/components/agent/agent-components"
-import { CheckCircle2, Clock, Terminal, ShieldAlert, AlertTriangle, Info, ChevronDown, ChevronRight, Activity, Monitor, AlertCircle } from "lucide-react"
+import { CheckCircle2, Clock, Terminal, ShieldAlert, AlertTriangle, Info, ChevronDown, ChevronRight, Activity, Monitor, AlertCircle, Cog } from "lucide-react"
+import { AutomationActionCard } from "./automation-action-card"
+import { ActionPlan } from "@/lib/api/automation"
+import { RecommendationHistoryPanel } from "./recommendation-history-panel"
 
 interface DiscoveryResultProps {
   session: DiscoverySession
@@ -55,15 +58,23 @@ export function DiscoveryResult({ session, warehouseName, monitoringResult }: Di
     }
   }
 
+  const isFailedSession = session.status === "FAILED"
+
   return (
     <div className="space-y-6 pb-12">
-      <Card className="bg-slate-900 border-emerald-500/30">
+      <Card className={`bg-slate-900 ${isFailedSession ? 'border-red-500/30' : 'border-emerald-500/30'}`}>
         <CardHeader className="border-b border-slate-800 bg-slate-950/50 pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+              {isFailedSession ? (
+                <AlertCircle className="h-6 w-6 text-red-500" />
+              ) : (
+                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+              )}
               <div>
-                <CardTitle className="text-xl">Discovery Completed</CardTitle>
+                <CardTitle className={`text-xl ${isFailedSession ? 'text-red-400' : ''}`}>
+                  {isFailedSession ? "Discovery Execution Failed" : "Discovery Completed"}
+                </CardTitle>
                 <div className="text-sm text-slate-400 mt-1">
                   Target: <span className="text-slate-200 font-medium">{warehouseName}</span>
                 </div>
@@ -97,16 +108,23 @@ export function DiscoveryResult({ session, warehouseName, monitoringResult }: Di
               </div>
               <div className="divide-y divide-slate-800/50">
                 {executions.map((exec) => (
-                  <div key={exec.agent_name} className="px-4 py-3 grid grid-cols-12 gap-4 items-center bg-slate-900 hover:bg-slate-800/50 transition-colors">
-                    <div className="col-span-6 font-medium text-slate-300 text-sm">
-                      {exec.agent_name}
+                  <div key={exec.agent_name} className="px-4 py-3 bg-slate-900 hover:bg-slate-800/50 transition-colors">
+                    <div className="grid grid-cols-12 gap-4 items-center">
+                      <div className="col-span-6 font-medium text-slate-300 text-sm">
+                        {exec.agent_name}
+                      </div>
+                      <div className="col-span-4">
+                        <AgentStatus status={exec.status} />
+                      </div>
+                      <div className="col-span-2 text-right text-xs text-slate-500 font-mono">
+                        {exec.duration_ms ? `${(exec.duration_ms / 1000).toFixed(2)}s` : "-"}
+                      </div>
                     </div>
-                    <div className="col-span-4">
-                      <AgentStatus status={exec.status} />
-                    </div>
-                    <div className="col-span-2 text-right text-xs text-slate-500 font-mono">
-                      {exec.duration_ms ? `${(exec.duration_ms / 1000).toFixed(2)}s` : "-"}
-                    </div>
+                    {exec.error && (
+                      <div className="mt-1.5 text-xs text-red-400 font-mono bg-red-950/20 px-2 py-1 rounded border border-red-900/30">
+                        Error: {exec.error}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -240,6 +258,37 @@ export function DiscoveryResult({ session, warehouseName, monitoringResult }: Di
             </div>
           )}
 
+          {/* Automation & Action Plans (Phase 3 & Phase 4) */}
+          {(() => {
+            const automationData = (session.recommendations?.automation as Record<string, unknown>) || {}
+            const actionPlans = (automationData?.action_plans as ActionPlan[]) || []
+            if (actionPlans.length === 0) return null
+            return (
+              <div className="space-y-4 pt-6 border-t border-slate-800 mt-6">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h4 className="text-xl font-bold text-slate-200 flex items-center">
+                    <Cog className="h-5 w-5 mr-2 text-sky-400 animate-spin-slow" />
+                    Proposed Action Plans ({actionPlans.length})
+                  </h4>
+                  <span className="text-xs font-mono text-sky-400 bg-sky-950 px-2.5 py-1 rounded border border-sky-900/40">
+                    Human-in-the-Loop Gate (Phase 4)
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {actionPlans.map((action) => (
+                    <AutomationActionCard
+                      key={action.action_id}
+                      action={action}
+                      warehouseId={session.warehouse_id}
+                      sessionId={session.session_id}
+                    />
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Fallback or Developer View for Raw JSON */}
           {hasRecommendations && (
             <div className="pt-6 border-t border-slate-800 mt-6">
@@ -260,6 +309,9 @@ export function DiscoveryResult({ session, warehouseName, monitoringResult }: Di
               )}
             </div>
           )}
+
+          {/* R1 Recommendation Outcome History Panel */}
+          <RecommendationHistoryPanel warehouseId={session.warehouse_id} sessionId={session.session_id} />
         </CardContent>
       </Card>
     </div>

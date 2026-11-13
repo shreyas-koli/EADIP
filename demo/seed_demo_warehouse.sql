@@ -1,5 +1,5 @@
 -- ============================================
--- EADIP DEMO WAREHOUSE DATA
+-- AetherArchive DEMO WAREHOUSE DATA
 -- ============================================
 
 -- Clean up only our demo tables

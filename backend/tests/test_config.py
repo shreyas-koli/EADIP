@@ -1,5 +1,5 @@
 """
-Configuration tests for EADIP backend settings.
+Configuration tests for AetherArchive backend settings.
 """
 
 import os

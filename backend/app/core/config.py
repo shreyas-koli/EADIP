@@ -13,7 +13,7 @@ from pydantic import Field
 
 class Settings(BaseSettings):
     """
-    Central configuration for the EADIP backend.
+    Central configuration for the AetherArchive backend.
 
     All values are read from environment variables and / or the
     project-level ``.env`` file.  Pydantic validates types at
@@ -21,10 +21,10 @@ class Settings(BaseSettings):
     """
 
     # ── Application ──────────────────────────────────────────────
-    APP_NAME: str = "EADIP"
+    APP_NAME: str = "AetherArchive"
 
     PROJECT_DESCRIPTION: str = (
-    "Enterprise Autonomous Data Intelligence Platform"
+    "AetherArchive — Autonomous Data Intelligence Platform"
 )
     APP_VERSION: str = "1.0.0"
 
@@ -33,6 +33,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://eadip.onrender.com",
+        "https://aetherarchive.onrender.com",
     ]
 
     # ── Authentication / JWT ─────────────────────────────────────
@@ -44,13 +45,13 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str
     
     # ── External APIs ────────────────────────────────────────────
-    DEFAULT_AI_PROVIDER: str = "openai"
+    DEFAULT_AI_PROVIDER: str = "gemini"
     OPENAI_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-3.8-flash"
     
     # ── Local AI (Ollama) ────────────────────────────────────────
-    OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
     OLLAMA_TIMEOUT_SECONDS: float = 120.0
 

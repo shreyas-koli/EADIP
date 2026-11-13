@@ -20,6 +20,11 @@ from app.models.user import User  # noqa: F401
 
 from app.models.warehouse import Warehouse  # noqa: F401
 from app.models.execution import DiscoverySession, AgentExecution  # noqa: F401
+from app.models.approval import ActionApproval  # noqa: F401
+from app.models.action_execution_record import ActionExecutionRecord  # noqa: F401
+from app.models.action_verification_record import ActionVerificationRecord  # noqa: F401
+from app.models.supervisor_reanalysis_record import SupervisorReanalysisRecord  # noqa: F401
+from app.models.recommendation_outcome_record import RecommendationOutcomeRecord  # noqa: F401
 
 
 def init_db() -> None:

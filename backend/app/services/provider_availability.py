@@ -23,38 +23,56 @@ _OLLAMA_MODELS_PATH = "/api/tags"
 
 
 def _check_openai() -> ProviderStatus:
-    if settings.OPENAI_API_KEY:
+    key = settings.OPENAI_API_KEY
+    if not key or not key.strip():
         return ProviderStatus(
             id="openai",
             name="OpenAI",
             mode="online",
-            available=True,
-            reason=None,
+            available=False,
+            reason="OPENAI_API_KEY is not set",
+        )
+    if key.startswith("AIza"):
+        return ProviderStatus(
+            id="openai",
+            name="OpenAI",
+            mode="online",
+            available=False,
+            reason="OPENAI_API_KEY contains a Gemini API key. Place it in GEMINI_API_KEY instead.",
         )
     return ProviderStatus(
         id="openai",
         name="OpenAI",
         mode="online",
-        available=False,
-        reason="API key not configured",
+        available=True,
+        reason=None,
     )
 
 
 def _check_gemini() -> ProviderStatus:
-    if settings.GEMINI_API_KEY:
+    key = settings.GEMINI_API_KEY
+    if not key or not key.strip():
         return ProviderStatus(
             id="gemini",
             name="Gemini",
             mode="online",
-            available=True,
-            reason=None,
+            available=False,
+            reason="GEMINI_API_KEY is not set",
+        )
+    if key.startswith("sk-"):
+        return ProviderStatus(
+            id="gemini",
+            name="Gemini",
+            mode="online",
+            available=False,
+            reason="GEMINI_API_KEY contains an OpenAI API key. Place it in OPENAI_API_KEY instead.",
         )
     return ProviderStatus(
         id="gemini",
         name="Gemini",
         mode="online",
-        available=False,
-        reason="API key not configured",
+        available=True,
+        reason=None,
     )
 
 

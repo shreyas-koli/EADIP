@@ -4,6 +4,8 @@ from openai import OpenAI
 from app.core.config import settings
 from app.ai.provider import BaseAIProvider
 
+from fastapi import HTTPException
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +18,10 @@ class OllamaProvider(BaseAIProvider):
     """
 
     def __init__(self):
-        self.base_url = settings.OLLAMA_BASE_URL
+        url = settings.OLLAMA_BASE_URL.rstrip("/")
+        if not url.endswith("/v1"):
+            url += "/v1"
+        self.base_url = url
         self.model = settings.OLLAMA_MODEL
         self.timeout = settings.OLLAMA_TIMEOUT_SECONDS
         # Ollama does not require a real API key.
@@ -39,20 +44,26 @@ class OllamaProvider(BaseAIProvider):
             error_str = str(e).lower()
             # Connection refused / unreachable
             if "connection" in error_str or "refused" in error_str or "connect" in error_str:
-                raise Exception(
-                    "Local AI service is unavailable. Please make sure Ollama is running."
+                raise HTTPException(
+                    status_code=400,
+                    detail="Local AI service is unavailable. Please make sure Ollama is running."
                 )
             # Model not found
             if "model" in error_str and ("not found" in error_str or "does not exist" in error_str):
-                raise Exception(
-                    f"The configured local AI model '{self.model}' is unavailable. "
-                    f"Please pull it with: ollama pull {self.model}"
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"The configured local AI model '{self.model}' is unavailable. Please pull it with: ollama pull {self.model}"
                 )
             # Timeout
             if "timeout" in error_str or "timed out" in error_str:
-                raise Exception(
-                    "Local AI inference timed out. The model may be too large or the machine is under heavy load."
+                raise HTTPException(
+                    status_code=400,
+                    detail="Local AI inference timed out. The model may be too large or the machine is under heavy load."
                 )
             # Generic — log details server-side, return safe message
             logger.error(f"Ollama provider error: {e}")
-            raise Exception("Local AI provider encountered an error.")
+            raise HTTPException(
+                status_code=400,
+                detail="Local AI provider encountered an error."
+            )
+

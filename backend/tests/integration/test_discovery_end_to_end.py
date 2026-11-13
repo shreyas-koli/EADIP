@@ -151,7 +151,7 @@ def test_end_to_end_successful_execution(e2e_session, mock_external_infrastructu
     assert data["warehouse_id"] == wh.id
     assert data["status"] == "COMPLETED"
     assert "agent_executions" in data
-    assert len(data["agent_executions"]) == 6
+    assert len(data["agent_executions"]) == 9
     
     session_id = data["session_id"]
     
@@ -159,7 +159,8 @@ def test_end_to_end_successful_execution(e2e_session, mock_external_infrastructu
     agents = {a["agent_name"]: a for a in data["agent_executions"]}
     assert "metadata" in agents and "statistics" in agents and "monitoring" in agents
     assert "security" in agents and "data_quality" in agents
-    assert "recommendation" in agents
+    assert "recommendation" in agents and "explainability" in agents and "reporting" in agents
+    assert "automation" in agents
     
     # Wave 1: metadata, statistics, monitoring
     assert agents["metadata"]["wave"] == 1
@@ -172,6 +173,11 @@ def test_end_to_end_successful_execution(e2e_session, mock_external_infrastructu
     
     # Wave 3: recommendation
     assert agents["recommendation"]["wave"] == 3
+
+    # Wave 4: explainability, reporting, automation
+    assert agents["explainability"]["wave"] == 4
+    assert agents["reporting"]["wave"] == 4
+    assert agents["automation"]["wave"] == 4
     
     # C. Orchestration / Execution Summary is validated inherently by the response matching
     
@@ -182,7 +188,7 @@ def test_end_to_end_successful_execution(e2e_session, mock_external_infrastructu
     assert db_session.warehouse_id == wh.id
     assert db_session.status == "COMPLETED"
     
-    assert len(db_session.agent_executions) == 6
+    assert len(db_session.agent_executions) == 9
     db_agents = {a.agent_name: a for a in db_session.agent_executions}
     assert db_agents["metadata"].status == "COMPLETED"
     assert db_agents["statistics"].status == "COMPLETED"
@@ -190,6 +196,9 @@ def test_end_to_end_successful_execution(e2e_session, mock_external_infrastructu
     assert db_agents["security"].status == "COMPLETED"
     assert db_agents["data_quality"].status == "COMPLETED"
     assert db_agents["recommendation"].status == "COMPLETED"
+    assert db_agents["explainability"].status == "COMPLETED"
+    assert db_agents["reporting"].status == "COMPLETED"
+    assert db_agents["automation"].status == "COMPLETED"
     
     # E. Verify Recommendation persistence and structure
     recs = db_session.recommendations

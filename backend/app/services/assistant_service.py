@@ -97,5 +97,6 @@ Instructions:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI provider error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"AI provider error: {str(e)}")
+
 

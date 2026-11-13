@@ -47,11 +47,9 @@ export function DataTable({ warehouseId, schemaName, tableName }: DataTableProps
   )
 
   // Fetch on mount and when key props change
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOffset(0)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setData(null)
     fetchRows(0, pageSize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
